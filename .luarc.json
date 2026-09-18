@@ -1,0 +1,63 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime": {
+    "version": "Lua 5.1",
+    "builtin": {
+      "basic": "enable",
+      "bit": "enable",
+      "bit32": "disable",
+      "coroutine": "enable",
+      "debug": "disable",
+      "ffi": "disable",
+      "io": "disable",
+      "jit": "disable",
+      "math": "enable",
+      "os": "disable",
+      "package": "disable",
+      "string": "enable",
+      "table": "enable",
+      "utf8": "disable"
+    }
+  },
+  "workspace": {
+    "library": []
+  },
+  "diagnostics": {
+    "globals": [
+      "CreateFrame",
+      "SlashCmdList",
+      "SLASH_CURSORTOOLTIP1",
+      "SLASH_CURSORTOOLTIP2",
+      "SLASH_GATHERMEMORY1",
+      "SLASH_GATHERMEMORY2",
+      "DEFAULT_CHAT_FRAME",
+      "GetBuildInfo",
+      "C_AddOns",
+      "C_Map",
+      "C_Minimap",
+      "C_Spell",
+      "C_Item",
+      "C_CVar",
+      "GameTooltip",
+      "hooksecurefunc",
+      "CursorTooltipDB",
+      "GatherMemoryDB",
+      "GatherMemoryPinMixin",
+      "UnitPosition",
+      "GetPlayerFacing",
+      "GetSpellInfo",
+      "GetItemIcon",
+      "GetCVar",
+      "Minimap",
+      "MinimapCluster",
+      "WorldMapFrame",
+      "MapCanvasDataProviderMixin",
+      "MapCanvasPinMixin",
+      "CreateFromMixins",
+      "Mixin",
+      "issecretvalue",
+      "time",
+      "date"
+    ]
+  }
+}
