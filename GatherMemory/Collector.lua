@@ -43,7 +43,10 @@ local function SaveNode(name, kind)
 	if not name or not kind then
 		return
 	end
-	if name == ns.SpellName(2366) or name == ns.SpellName(2575) or name == ns.SpellName(3365) then
+	if name == ns.SpellName(2366) or name == ns.SpellName(2575) or name == ns.SpellName(3365) or name == ns.SpellName(7620) then
+		return
+	end
+	if string.lower(name) == "fishing bobber" then
 		return
 	end
 	local catalogKind = ns.GuessKindFromName(name)
@@ -52,6 +55,10 @@ local function SaveNode(name, kind)
 	end
 	-- Opening is used for quest objects on the ground; only keep real chests.
 	if kind == "chest" and catalogKind ~= "chest" then
+		return
+	end
+	-- Fishing casts in open water are not nodes; only keep schools and wreckage.
+	if kind == "fish" and catalogKind ~= "fish" then
 		return
 	end
 	foundTarget = true
@@ -77,6 +84,7 @@ function ns.InitCollector()
 	RememberSpell(3365, "chest") -- Opening
 	RememberSpell(22810, "chest") -- Opening - No Text
 	RememberSpell(1804, "chest") -- Pick Lock
+	RememberSpell(7620, "fish") -- Fishing
 
 	local frame = CreateFrame("Frame")
 	frame:RegisterEvent("UNIT_SPELLCAST_SENT")
@@ -133,12 +141,15 @@ function ns.InitCollector()
 			local mineName = ns.SpellName(2575) or "Mining"
 			local openName = ns.SpellName(3365) or "Opening"
 			local pickName = ns.SpellName(1804) or "Pick Lock"
+			local fishName = ns.SpellName(7620) or "Fishing"
 			if string.find(message, mineName, 1, true) then
 				SaveNode(name, "ore")
 			elseif string.find(message, herbName, 1, true) or string.find(message, herbSkill, 1, true) then
 				SaveNode(name, "herb")
 			elseif string.find(message, openName, 1, true) or string.find(message, pickName, 1, true) then
 				SaveNode(name, "chest")
+			elseif string.find(message, fishName, 1, true) then
+				SaveNode(name, "fish")
 			end
 		end
 	end)

@@ -3,11 +3,13 @@ local _, ns = ...
 local KIND_HERB = "herb"
 local KIND_ORE = "ore"
 local KIND_CHEST = "chest"
+local KIND_FISH = "fish"
 
 ns.DEFAULT_ICONS = {
 	[KIND_HERB] = "Interface\\Icons\\INV_Misc_Flower_02",
 	[KIND_ORE] = "Interface\\Icons\\INV_Ore_Copper_01",
 	[KIND_CHEST] = "Interface\\Icons\\INV_Box_01",
+	[KIND_FISH] = "Interface\\Icons\\INV_Misc_Fish_02",
 }
 
 -- Vanilla-era node names. itemID is the gathered item so pins use that icon.
@@ -94,6 +96,23 @@ local catalog = {
 	{ name = "Mithril Lockbox", kind = KIND_CHEST, texture = "Interface\\Icons\\INV_Misc_OrnateBox" },
 	{ name = "Thorium Lockbox", kind = KIND_CHEST, texture = "Interface\\Icons\\INV_Misc_OrnateBox" },
 	{ name = "Eternium Lockbox", kind = KIND_CHEST, texture = "Interface\\Icons\\INV_Misc_OrnateBox" },
+
+	-- Fishing pools (itemID is a typical catch so pins use that fish icon)
+	{ name = "Floating Debris", kind = KIND_FISH, texture = "Interface\\Icons\\INV_Crate_01", skill = 1, skillName = "Fishing" },
+	{ name = "Oil Spill", kind = KIND_FISH, texture = "Interface\\Icons\\INV_Potion_12", skill = 1, skillName = "Fishing" },
+	{ name = "Oily Blackmouth School", kind = KIND_FISH, itemID = 6358, skill = 1, skillName = "Fishing" },
+	{ name = "School of Deviate Fish", kind = KIND_FISH, itemID = 6522, skill = 1, skillName = "Fishing" },
+	{ name = "Firefin Snapper School", kind = KIND_FISH, itemID = 6359, skill = 55, skillName = "Fishing" },
+	{ name = "Sagefish School", kind = KIND_FISH, itemID = 21071, skill = 70, skillName = "Fishing" },
+	{ name = "Greater Sagefish School", kind = KIND_FISH, itemID = 21153, skill = 175, skillName = "Fishing" },
+	{ name = "School of Tastyfish", kind = KIND_FISH, itemID = 19807, skill = 205, skillName = "Fishing" },
+	{ name = "Floating Wreckage", kind = KIND_FISH, texture = "Interface\\Icons\\INV_Crate_02", skill = 225, skillName = "Fishing" },
+	{ name = "Waterlogged Wreckage", kind = KIND_FISH, texture = "Interface\\Icons\\INV_Crate_01", skill = 225, skillName = "Fishing" },
+	{ name = "Schooner Wreckage", kind = KIND_FISH, texture = "Interface\\Icons\\INV_Crate_02", skill = 225, skillName = "Fishing" },
+	{ name = "Bloodsail Wreckage", kind = KIND_FISH, texture = "Interface\\Icons\\INV_Crate_02", skill = 225, skillName = "Fishing" },
+	{ name = "Stonescale Eel Swarm", kind = KIND_FISH, itemID = 13422, skill = 245, skillName = "Fishing" },
+	{ name = "Patch of Elemental Water", kind = KIND_FISH, itemID = 7080, skill = 255, skillName = "Fishing" },
+	{ name = "Muddy Churning Waters", kind = KIND_FISH, itemID = 19807, skill = 330, skillName = "Fishing" },
 }
 
 local byName = {}
@@ -155,6 +174,15 @@ function ns.GuessKindFromName(name)
 	end
 	if string.find(lower, "vein", 1, true) or string.find(lower, "deposit", 1, true) then
 		return KIND_ORE
+	end
+	if string.find(lower, "school", 1, true)
+		or string.find(lower, "swarm", 1, true)
+		or string.find(lower, "wreckage", 1, true)
+		or string.find(lower, "debris", 1, true)
+		or string.find(lower, "oil spill", 1, true)
+		or string.find(lower, "elemental water", 1, true)
+		or string.find(lower, "churning water", 1, true) then
+		return KIND_FISH
 	end
 	return nil
 end

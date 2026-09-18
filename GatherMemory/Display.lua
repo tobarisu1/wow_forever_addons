@@ -12,6 +12,18 @@ local ZOOM_RADIUS = {
 local activePins = {}
 local pinPool = {}
 local updater
+local squareMinimap = false
+
+local function TobarisuMapLoaded()
+	-- https://warcraft.wiki.gg/wiki/API_C_AddOns.IsAddOnLoaded
+	if C_AddOns and C_AddOns.IsAddOnLoaded then
+		local loadedOrLoading = C_AddOns.IsAddOnLoaded("TobarisuMap")
+		if loadedOrLoading then
+			return true
+		end
+	end
+	return TobarisuMap ~= nil
+end
 
 local function ViewRadius()
 	if C_Minimap and C_Minimap.GetViewRadius then
@@ -127,8 +139,14 @@ function ns.UpdateMinimap(force)
 		end
 		local diffX = xDist / radius
 		local diffY = yDist / radius
-		local dist2 = (diffX * diffX + diffY * diffY) / (0.9 * 0.9)
-		if dist2 <= 1 then
+		local onMap
+		if squareMinimap then
+			onMap = math.abs(diffX) < 1 and math.abs(diffY) < 1
+		else
+			local dist2 = (diffX * diffX + diffY * diffY) / (0.9 * 0.9)
+			onMap = dist2 <= 1
+		end
+		if onMap then
 			needed[#needed + 1] = {
 				node = node,
 				x = diffX * width,
@@ -164,6 +182,10 @@ end
 function ns.InitMinimap()
 	if updater then
 		return
+	end
+	squareMinimap = TobarisuMapLoaded()
+	if squareMinimap then
+		ns.MINIMAP_PIN_SIZE = 20
 	end
 	updater = CreateFrame("Frame")
 	updater.elapsed = 0

@@ -1,6 +1,6 @@
 ## Interface: 120105
 ## Title: GatherMemory
-## Notes: Remembers herbs, ore, and chests you personally gather. /gm for options.
+## Notes: Remembers herbs, ore, chests, and fishing pools you personally gather. /gm for options.
 ## Author: tobarisu1
 ## Version: 0.1.0
 ## IconTexture: Interface\Icons\INV_Misc_Flower_02

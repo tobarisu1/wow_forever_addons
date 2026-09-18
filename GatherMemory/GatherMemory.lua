@@ -7,17 +7,48 @@ ns.WORLDMAP_PIN_SIZE = 12
 ns.DEDUP_YARDS = 20
 ns.DEDUP_MAP = 0.005
 
+ns.KINDS = {
+	{ id = "herb", setting = "showHerbs", label = "Herb", commands = { "herbs", "herb", "herbalism" } },
+	{ id = "ore", setting = "showOre", label = "Ore", commands = { "ore", "mining" } },
+	{ id = "chest", setting = "showChests", label = "Chest", commands = { "chests", "chest", "treasure" } },
+	{ id = "fish", setting = "showFish", label = "Fishing", commands = { "fish", "fishing" } },
+}
+
+ns.DISPLAYS = {
+	{ setting = "showMinimap", command = "minimap" },
+	{ setting = "showWorldMap", command = "worldmap" },
+}
+
+local kindById = {}
+local settingByCommand = {}
+local commandNames = {}
+
+for i = 1, #ns.KINDS do
+	local kind = ns.KINDS[i]
+	kindById[kind.id] = kind
+	commandNames[#commandNames + 1] = kind.commands[1]
+	for j = 1, #kind.commands do
+		settingByCommand[kind.commands[j]] = kind.setting
+	end
+end
+for i = 1, #ns.DISPLAYS do
+	local display = ns.DISPLAYS[i]
+	commandNames[#commandNames + 1] = display.command
+	settingByCommand[display.command] = display.setting
+end
+
 local defaults = {
 	version = 1,
 	settings = {
 		showMinimap = true,
 		showWorldMap = true,
-		showHerbs = true,
-		showOre = true,
-		showChests = true,
 	},
 	nodes = {},
 }
+
+for i = 1, #ns.KINDS do
+	defaults.settings[ns.KINDS[i].setting] = true
+end
 
 function ns.Print(message)
 	print(ns.PREFIX .. ": " .. message)
@@ -53,29 +84,19 @@ function ns.SetSetting(key, value)
 end
 
 function ns.IsKindShown(kind)
-	if kind == "herb" then
-		return ns.GetSetting("showHerbs")
+	local info = kindById[kind]
+	if not info then
+		return false
 	end
-	if kind == "ore" then
-		return ns.GetSetting("showOre")
-	end
-	if kind == "chest" then
-		return ns.GetSetting("showChests")
-	end
-	return false
+	return ns.GetSetting(info.setting)
 end
 
 function ns.KindLabel(kind)
-	if kind == "herb" then
-		return "Herb"
+	local info = kindById[kind]
+	if not info then
+		return kind or "Unknown"
 	end
-	if kind == "ore" then
-		return "Ore"
-	end
-	if kind == "chest" then
-		return "Chest"
-	end
-	return kind or "Unknown"
+	return info.label
 end
 
 local function MapKey(uiMapID)
@@ -178,6 +199,35 @@ function ns.GetPlayerLocation()
 	}
 end
 
+function ns.OffsetLocationForward(loc, yards)
+	if not loc or not yards then
+		return loc
+	end
+	local facing = GetPlayerFacing()
+	if not facing or not loc.wx or not loc.wy then
+		return loc
+	end
+	loc.wx = loc.wx - math.sin(facing) * yards
+	loc.wy = loc.wy + math.cos(facing) * yards
+	if C_Map.GetMapPosFromWorldPos and loc.instance ~= nil then
+		local vec
+		if CreateVector2D then
+			vec = CreateVector2D(loc.wx, loc.wy)
+		else
+			vec = { x = loc.wx, y = loc.wy }
+		end
+		local _, mapPos = C_Map.GetMapPosFromWorldPos(loc.instance, vec, loc.uiMapID)
+		if mapPos then
+			if mapPos.GetXY then
+				loc.x, loc.y = mapPos:GetXY()
+			else
+				loc.x, loc.y = mapPos.x, mapPos.y
+			end
+		end
+	end
+	return loc
+end
+
 local function DistanceYards(a, b)
 	if a.wx and b.wx and a.wy and b.wy then
 		if a.instance ~= nil and b.instance ~= nil and a.instance ~= b.instance then
@@ -210,6 +260,9 @@ function ns.AddNode(name, kind)
 	local loc = ns.GetPlayerLocation()
 	if not loc then
 		return false, false
+	end
+	if kind == "fish" then
+		loc = ns.OffsetLocationForward(loc, 15)
 	end
 	local list = ns.GetOrCreateNodeList(loc.uiMapID)
 	for i = 1, #list do
@@ -349,16 +402,21 @@ local function BoolText(value)
 end
 
 local function PrintStatus()
-	ns.Print("minimap " .. BoolText(ns.GetSetting("showMinimap"))
-		.. "  worldmap " .. BoolText(ns.GetSetting("showWorldMap"))
-		.. "  herbs " .. BoolText(ns.GetSetting("showHerbs"))
-		.. "  ore " .. BoolText(ns.GetSetting("showOre"))
-		.. "  chests " .. BoolText(ns.GetSetting("showChests")))
+	local parts = {}
+	for i = 1, #ns.DISPLAYS do
+		local display = ns.DISPLAYS[i]
+		parts[#parts + 1] = display.command .. " " .. BoolText(ns.GetSetting(display.setting))
+	end
+	for i = 1, #ns.KINDS do
+		local kind = ns.KINDS[i]
+		parts[#parts + 1] = kind.commands[1] .. " " .. BoolText(ns.GetSetting(kind.setting))
+	end
+	ns.Print(table.concat(parts, "  "))
 	print("Nodes saved: " .. ns.CountNodes())
 end
 
 local function PrintMenu()
-	ns.Print("/gm herbs | ore | chests | minimap | worldmap on | off")
+	ns.Print("/gm " .. table.concat(commandNames, " | ") .. " on | off")
 	print("/gm status")
 	print("/gm clear zone | all")
 	PrintStatus()
@@ -373,14 +431,6 @@ local function ParseOnOff(text)
 	end
 	return nil
 end
-
-local settingNames = {
-	herbs = "showHerbs",
-	ore = "showOre",
-	chests = "showChests",
-	minimap = "showMinimap",
-	worldmap = "showWorldMap",
-}
 
 local function HandleSlash(msg)
 	msg = string.lower(string.match(msg or "", "^%s*(.-)%s*$") or "")
@@ -405,11 +455,16 @@ local function HandleSlash(msg)
 		end
 		return
 	end
-	local setting = settingNames[cmd]
+	local setting = settingByCommand[cmd]
 	local value = ParseOnOff(rest)
 	if setting and value ~= nil then
 		ns.SetSetting(setting, value)
 		ns.Print(cmd .. " " .. BoolText(value))
+		return
+	end
+	if setting then
+		ns.Print("/gm " .. cmd .. " on | off")
+		print("Currently: " .. BoolText(ns.GetSetting(setting)))
 		return
 	end
 	PrintMenu()
