@@ -1,0 +1,9 @@
+## Interface: 120105
+## Title: CursorTooltip
+## Notes: Anchors the default GameTooltip to the mouse cursor. /mtt to toggle.
+## Author: tobarisu1
+## Version: 0.1.0
+## IconTexture: Interface\Icons\INV_Misc_Spyglass_02
+## SavedVariables: CursorTooltipDB
+
+CursorTooltip.lua
