@@ -1,0 +1,9 @@
+## Interface: 120105
+## Title: OldManQuester
+## Notes: Larger quest dialog and map quest log, tracker panel, and high-contrast bag quest items. /omq to toggle.
+## Author: tobarisu1
+## Version: 0.1.0
+## IconTexture: Interface\Icons\INV_Misc_Book_09
+## SavedVariables: OldManQuesterDB
+
+OldManQuester.lua
