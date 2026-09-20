@@ -4,6 +4,8 @@
 ## Author: tobarisu1
 ## Version: 0.1.0
 ## IconTexture: Interface\Icons\INV_Misc_Flower_02
+# One account file. Settings and node records both live in GatherMemoryDB.
+## LoadSavedVariablesFirst: 1
 ## SavedVariables: GatherMemoryDB
 
 GatherMemory.lua

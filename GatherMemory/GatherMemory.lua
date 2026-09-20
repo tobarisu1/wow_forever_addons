@@ -4,7 +4,6 @@ ns.addonName = addonName
 ns.PREFIX = "|cff33cc99GatherMemory|r"
 ns.MINIMAP_PIN_SIZE = 14
 ns.WORLDMAP_PIN_SIZE = 12
-ns.DEDUP_YARDS = 20
 ns.DEDUP_MAP = 0.005
 
 ns.KINDS = {
@@ -38,12 +37,10 @@ for i = 1, #ns.DISPLAYS do
 end
 
 local defaults = {
-	version = 1,
 	settings = {
 		showMinimap = true,
 		showWorldMap = true,
 	},
-	nodes = {},
 }
 
 for i = 1, #ns.KINDS do
@@ -67,18 +64,387 @@ local function CopyDefaults(src, dest)
 	end
 end
 
+local function IsSecret(value)
+	if value == nil or not issecretvalue then
+		return false
+	end
+	local ok, secret = pcall(issecretvalue, value)
+	return ok and secret
+end
+
+local function RevealText(value)
+	if value == nil then
+		return nil
+	end
+	if type(value) == "string" and not IsSecret(value) then
+		if value == "" then
+			return nil
+		end
+		return value
+	end
+	local ok, text = pcall(function()
+		return value .. ""
+	end)
+	if not ok or type(text) ~= "string" then
+		return nil
+	end
+	local empty = false
+	pcall(function()
+		empty = text == ""
+	end)
+	if empty or IsSecret(text) then
+		return nil
+	end
+	return text
+end
+
+local function Unwrap(value)
+	if value == nil then
+		return nil
+	end
+	if secretunwrap then
+		local ok, result = pcall(secretunwrap, value)
+		if ok and result ~= nil then
+			return result
+		end
+	end
+	if not IsSecret(value) then
+		return value
+	end
+	local text = RevealText(value)
+	if text == nil then
+		return nil
+	end
+	if text == "true" then
+		return true
+	end
+	if text == "false" then
+		return false
+	end
+	if type(value) == "number" then
+		return tonumber(text)
+	end
+	return text
+end
+
+local function PublicNumber(value)
+	if value == nil then
+		return nil
+	end
+	local revealed = Unwrap(value)
+	if type(revealed) == "number" then
+		return revealed
+	end
+	return tonumber(revealed)
+end
+
+ns.PublicNumber = PublicNumber
+
+local function PublicText(value)
+	local text = RevealText(value)
+	if not text or text == "" then
+		return nil
+	end
+	return text
+end
+
+ns.PublicText = PublicText
+
+local function PublicBool(value)
+	if type(value) == "boolean" and not IsSecret(value) then
+		return value
+	end
+	local text = RevealText(value)
+	if text == "true" then
+		return true
+	end
+	if text == "false" then
+		return false
+	end
+	return nil
+end
+
+local function Grid(value)
+	value = PublicNumber(value)
+	if not value then
+		return nil
+	end
+	if value < 0 then
+		value = 0
+	elseif value > 0.9999 then
+		value = 0.9999
+	end
+	return math.floor(value * 10000 + 0.5)
+end
+
+local function EncodeLoc(x, y)
+	local xi, yi = Grid(x), Grid(y)
+	if not xi or not yi then
+		return nil
+	end
+	return xi .. ":" .. yi
+end
+
+local function DecodeLoc(coord)
+	if coord == nil then
+		return nil
+	end
+	local text = PublicText(coord)
+	if text then
+		coord = text
+	end
+	if type(coord) == "string" then
+		local xs, ys = string.match(coord, "^(%d+):(%d+)$")
+		if xs and ys then
+			return tonumber(xs) / 10000, tonumber(ys) / 10000
+		end
+		return nil
+	end
+	if type(coord) ~= "number" then
+		return nil
+	end
+	return math.floor(coord / 1000000) / 10000, math.floor((coord % 1000000) / 100) / 10000
+end
+
+local function NormalizeCoord(coord)
+	local x, y = DecodeLoc(coord)
+	if not x or not y then
+		return nil
+	end
+	return EncodeLoc(x, y)
+end
+
+local function ZoneKey(map)
+	local id = PublicNumber(map) or tonumber(map)
+	if not id then
+		return nil
+	end
+	return tostring(id)
+end
+
+local function StoredName(value)
+	if ns.GetNameForNode then
+		local name = ns.GetNameForNode(value)
+		if type(name) == "string" and name ~= "" then
+			return name
+		end
+	end
+	return PublicText(value)
+end
+
+local function SameMap(a, b)
+	if a == nil or b == nil then
+		return false
+	end
+	local na, nb = PublicNumber(a), PublicNumber(b)
+	if na and nb then
+		return na == nb
+	end
+	local ok, same = pcall(function()
+		return a == b or tostring(a) == tostring(b)
+	end)
+	return ok and same
+end
+
+-- Nested SavedVariables keys come back unreadable on this client, so the file
+-- stores one string (same as TobarisuMapDB.point). Pins are served from cache.
+local cache = {}
+
+local function CacheKey(kind, map, xy)
+	return kind .. ":" .. map .. ":" .. xy
+end
+
+local function CacheHas(kind, map, xy, name, x, y)
+	for i = 1, #cache do
+		local node = cache[i]
+		if node.kind == kind and node.name == name and SameMap(node.uiMapID, map) then
+			local dx = node.x - x
+			local dy = node.y - y
+			if (dx * dx + dy * dy) <= (ns.DEDUP_MAP * ns.DEDUP_MAP) then
+				return true
+			end
+		end
+		if node.key == CacheKey(kind, map, xy) then
+			return true
+		end
+	end
+	return false
+end
+
+local function CacheAdd(kind, map, xy, name)
+	kind = PublicText(kind) or kind
+	local zone = ZoneKey(map)
+	xy = NormalizeCoord(xy)
+	name = StoredName(name)
+	if not kindById[kind] or not zone or not xy or not name then
+		return false
+	end
+	local x, y = DecodeLoc(xy)
+	if not x or not y then
+		return false
+	end
+	if CacheHas(kind, zone, xy, name, x, y) then
+		return false
+	end
+	cache[#cache + 1] = {
+		key = CacheKey(kind, zone, xy),
+		kind = kind,
+		uiMapID = tonumber(zone),
+		x = x,
+		y = y,
+		xy = xy,
+		name = name,
+	}
+	return true
+end
+
+local KIND_INDEX = { herb = 1, ore = 2, chest = 3, fish = 4 }
+local INDEX_KIND = { "herb", "ore", "chest", "fish" }
+
+local function FlushPacked()
+	if type(GatherMemoryDB) ~= "table" then
+		return
+	end
+	local oldCount = PublicNumber(GatherMemoryDB.count) or 0
+	GatherMemoryDB.count = #cache
+	for i = 1, #cache do
+		local node = cache[i]
+		local prefix = "n" .. i
+		local xs, ys = string.match(node.xy, "^(%d+):(%d+)$")
+		GatherMemoryDB[prefix .. "k"] = KIND_INDEX[node.kind]
+		GatherMemoryDB[prefix .. "m"] = node.uiMapID
+		GatherMemoryDB[prefix .. "x"] = tonumber(xs)
+		GatherMemoryDB[prefix .. "y"] = tonumber(ys)
+		GatherMemoryDB[prefix .. "i"] = (ns.GetIDForNode and ns.GetIDForNode(node.name)) or 0
+	end
+	for i = #cache + 1, oldCount do
+		local prefix = "n" .. i
+		GatherMemoryDB[prefix .. "k"] = nil
+		GatherMemoryDB[prefix .. "m"] = nil
+		GatherMemoryDB[prefix .. "x"] = nil
+		GatherMemoryDB[prefix .. "y"] = nil
+		GatherMemoryDB[prefix .. "i"] = nil
+	end
+	if #cache == 0 then
+		return
+	end
+	local lines = {}
+	for i = 1, #cache do
+		local node = cache[i]
+		lines[#lines + 1] = node.kind .. "|" .. tostring(node.uiMapID) .. "|" .. node.xy .. "|" .. node.name
+	end
+	GatherMemoryDB.packed = table.concat(lines, "\n")
+end
+
+local function RebuildFromRecords()
+	if type(GatherMemoryDB) ~= "table" then
+		return
+	end
+	local count = PublicNumber(GatherMemoryDB.count)
+	if not count or count < 1 then
+		return
+	end
+	for i = 1, count do
+		local prefix = "n" .. i
+		local kind = INDEX_KIND[PublicNumber(GatherMemoryDB[prefix .. "k"])]
+		local map = PublicNumber(GatherMemoryDB[prefix .. "m"])
+		local x = PublicNumber(GatherMemoryDB[prefix .. "x"])
+		local y = PublicNumber(GatherMemoryDB[prefix .. "y"])
+		local id = PublicNumber(GatherMemoryDB[prefix .. "i"])
+		local name = (id and ns.GetNameForNode and ns.GetNameForNode(id)) or "Unknown node"
+		if kind and map and x and y then
+			CacheAdd(kind, map, tostring(x) .. ":" .. tostring(y), name)
+		end
+	end
+end
+
+local function RebuildFromPacked()
+	if type(GatherMemoryDB) ~= "table" then
+		return
+	end
+	local text = PublicText(GatherMemoryDB.packed)
+	if not text then
+		return
+	end
+	pcall(function()
+		for rawLine in string.gmatch(text, "[^\n]+") do
+			local line = string.gsub(rawLine, "\r", "")
+			local kind, zone, coord, name = string.match(line, "^([^|]+)|([^|]+)|([^|]+)|(.+)$")
+			if kind then
+				CacheAdd(kind, zone, coord, name)
+			end
+		end
+	end)
+end
+
+local function FlattenNestedNodes()
+	if type(GatherMemoryDB) ~= "table" or type(GatherMemoryDB.nodes) ~= "table" then
+		return
+	end
+	pcall(function()
+		for kind, nodedb in pairs(GatherMemoryDB.nodes) do
+			kind = PublicText(kind) or kind
+			if kindById[kind] and type(nodedb) == "table" then
+				for zone, coords in pairs(nodedb) do
+					if type(coords) == "table" then
+						for coord, nodeID in pairs(coords) do
+							CacheAdd(kind, zone, coord, nodeID)
+						end
+					end
+				end
+			end
+		end
+	end)
+	if type(GatherMemoryDB.list) == "table" then
+		pcall(function()
+			for _, row in pairs(GatherMemoryDB.list) do
+				if type(row) == "table" then
+					CacheAdd(row.kind, row.map, row.xy, row.name)
+				end
+			end
+		end)
+	end
+end
+
+local function LoadCache()
+	RebuildFromRecords()
+	RebuildFromPacked()
+	FlattenNestedNodes()
+	if #cache > 0 then
+		FlushPacked()
+	end
+end
+
 function ns.InitDB()
 	if type(GatherMemoryDB) ~= "table" then
 		GatherMemoryDB = {}
 	end
-	CopyDefaults(defaults, GatherMemoryDB)
+	if type(GatherMemoryDB.settings) ~= "table" then
+		GatherMemoryDB.settings = {}
+	end
+	CopyDefaults(defaults.settings, GatherMemoryDB.settings)
+	LoadCache()
 end
 
 function ns.GetSetting(key)
-	return GatherMemoryDB.settings[key]
+	if type(GatherMemoryDB) ~= "table" or type(GatherMemoryDB.settings) ~= "table" then
+		return nil
+	end
+	local value = GatherMemoryDB.settings[key]
+	local flag = PublicBool(value)
+	if flag ~= nil then
+		return flag
+	end
+	return value
 end
 
 function ns.SetSetting(key, value)
+	if type(GatherMemoryDB) ~= "table" then
+		return
+	end
+	if type(GatherMemoryDB.settings) ~= "table" then
+		GatherMemoryDB.settings = {}
+	end
 	GatherMemoryDB.settings[key] = value
 	ns.RefreshAll()
 end
@@ -88,7 +454,7 @@ function ns.IsKindShown(kind)
 	if not info then
 		return false
 	end
-	return ns.GetSetting(info.setting)
+	return ns.GetSetting(info.setting) ~= false
 end
 
 function ns.KindLabel(kind)
@@ -99,39 +465,18 @@ function ns.KindLabel(kind)
 	return info.label
 end
 
-local function MapKey(uiMapID)
-	return tonumber(uiMapID) or uiMapID
-end
-
-function ns.GetNodeList(uiMapID)
-	if not GatherMemoryDB or not GatherMemoryDB.nodes then
-		return nil
+function ns.ForEachNode(callback)
+	for i = 1, #cache do
+		callback(cache[i], cache[i].uiMapID)
 	end
-	local key = MapKey(uiMapID)
-	return GatherMemoryDB.nodes[key] or GatherMemoryDB.nodes[tostring(uiMapID)]
-end
-
-function ns.GetOrCreateNodeList(uiMapID)
-	local key = MapKey(uiMapID)
-	local list = ns.GetNodeList(key)
-	if not list then
-		list = {}
-		GatherMemoryDB.nodes[key] = list
-	end
-	return list
 end
 
 function ns.CountNodes(uiMapID)
-	if uiMapID then
-		local list = ns.GetNodeList(uiMapID)
-		if not list then
-			return 0
-		end
-		return #list
-	end
 	local total = 0
-	for _, list in pairs(GatherMemoryDB.nodes) do
-		total = total + #list
+	for i = 1, #cache do
+		if not uiMapID or SameMap(cache[i].uiMapID, uiMapID) then
+			total = total + 1
+		end
 	end
 	return total
 end
@@ -156,7 +501,24 @@ function ns.ItemIcon(itemID)
 	return nil
 end
 
-function ns.GetPlayerLocation()
+local function Vector2(x, y)
+	if CreateVector2D then
+		return CreateVector2D(x, y)
+	end
+	return { x = x, y = y }
+end
+
+local function VectorXY(vec)
+	if not vec then
+		return nil
+	end
+	if vec.GetXY then
+		return vec:GetXY()
+	end
+	return vec.x, vec.y
+end
+
+function ns.GetPlayerLocation(reveal)
 	if not C_Map or not C_Map.GetBestMapForUnit then
 		return nil
 	end
@@ -168,201 +530,146 @@ function ns.GetPlayerLocation()
 	if not pos then
 		return nil
 	end
-	local x, y
-	if pos.GetXY then
-		x, y = pos:GetXY()
-	else
-		x, y = pos.x, pos.y
-	end
+	local x, y = VectorXY(pos)
 	if not x or not y then
 		return nil
 	end
-	local wy, wx, _, instance = UnitPosition("player")
-	if (not wx or not wy) and C_Map.GetWorldPosFromMapPos then
-		local continentID, worldPos = C_Map.GetWorldPosFromMapPos(uiMapID, pos)
-		if worldPos then
-			if worldPos.GetXY then
-				wx, wy = worldPos:GetXY()
-			else
-				wx, wy = worldPos.x, worldPos.y
-			end
-			instance = continentID
+	if reveal then
+		uiMapID = PublicNumber(uiMapID)
+		x, y = PublicNumber(x), PublicNumber(y)
+		if not uiMapID or not x or not y then
+			return nil
 		end
 	end
 	return {
 		uiMapID = uiMapID,
 		x = x,
 		y = y,
-		wx = wx,
-		wy = wy,
-		instance = instance,
 	}
 end
 
 function ns.OffsetLocationForward(loc, yards)
-	if not loc or not yards then
+	if not loc or not yards or not loc.x or not loc.y or not loc.uiMapID then
 		return loc
 	end
-	local facing = GetPlayerFacing()
-	if not facing or not loc.wx or not loc.wy then
+	local facing = PublicNumber(GetPlayerFacing())
+	if not facing or not C_Map or not C_Map.GetMapWorldSize then
 		return loc
 	end
-	loc.wx = loc.wx - math.sin(facing) * yards
-	loc.wy = loc.wy + math.cos(facing) * yards
-	if C_Map.GetMapPosFromWorldPos and loc.instance ~= nil then
-		local vec
-		if CreateVector2D then
-			vec = CreateVector2D(loc.wx, loc.wy)
-		else
-			vec = { x = loc.wx, y = loc.wy }
-		end
-		local _, mapPos = C_Map.GetMapPosFromWorldPos(loc.instance, vec, loc.uiMapID)
-		if mapPos then
-			if mapPos.GetXY then
-				loc.x, loc.y = mapPos:GetXY()
-			else
-				loc.x, loc.y = mapPos.x, mapPos.y
-			end
-		end
+	local width, height = C_Map.GetMapWorldSize(loc.uiMapID)
+	width, height = PublicNumber(width), PublicNumber(height)
+	if not width or not height or width == 0 or height == 0 then
+		return loc
 	end
+	loc.x = loc.x - math.sin(facing) * yards / width
+	loc.y = loc.y - math.cos(facing) * yards / height
 	return loc
 end
 
-local function DistanceYards(a, b)
-	if a.wx and b.wx and a.wy and b.wy then
-		if a.instance ~= nil and b.instance ~= nil and a.instance ~= b.instance then
-			return nil
-		end
-		local dx = a.wx - b.wx
-		local dy = a.wy - b.wy
-		return math.sqrt(dx * dx + dy * dy)
+function ns.GetNodeWorldPosition(node)
+	if not node or not node.uiMapID or not node.x or not node.y or not C_Map or not C_Map.GetWorldPosFromMapPos then
+		return nil
+	end
+	local wx, wy
+	pcall(function()
+		local _, worldPos = C_Map.GetWorldPosFromMapPos(node.uiMapID, Vector2(node.x, node.y))
+		wx, wy = VectorXY(worldPos)
+	end)
+	return wx, wy
+end
+
+function ns.GetNodeMapPosition(node, targetMapID)
+	if not node or not targetMapID then
+		return nil
+	end
+	if SameMap(node.uiMapID, targetMapID) and node.x and node.y then
+		return node.x, node.y
 	end
 	return nil
 end
 
-local function IsDuplicate(existing, loc, name, kind)
-	if existing.name ~= name or existing.kind ~= kind then
-		return false
-	end
-	local yards = DistanceYards(existing, loc)
-	if yards then
-		return yards <= ns.DEDUP_YARDS
-	end
-	local dx = (existing.x or 0) - (loc.x or 0)
-	local dy = (existing.y or 0) - (loc.y or 0)
-	return (dx * dx + dy * dy) <= (ns.DEDUP_MAP * ns.DEDUP_MAP)
-end
-
 function ns.AddNode(name, kind)
-	if not name or name == "" or not kind then
+	name = PublicText(name)
+	kind = PublicText(kind)
+	if not name or not kind or not kindById[kind] then
 		return false, false
 	end
-	local loc = ns.GetPlayerLocation()
+	if type(GatherMemoryDB) ~= "table" then
+		GatherMemoryDB = {}
+	end
+	local loc = ns.GetPlayerLocation(true)
 	if not loc then
 		return false, false
 	end
 	if kind == "fish" then
 		loc = ns.OffsetLocationForward(loc, 15)
 	end
-	local list = ns.GetOrCreateNodeList(loc.uiMapID)
-	for i = 1, #list do
-		local existing = list[i]
-		if IsDuplicate(existing, loc, name, kind) then
-			existing.x = loc.x
-			existing.y = loc.y
-			existing.wx = loc.wx
-			existing.wy = loc.wy
-			existing.instance = loc.instance
-			existing.lastSeen = time()
-			ns.RefreshAll()
-			return true, false
-		end
+	local coord = EncodeLoc(loc.x, loc.y)
+	if not coord then
+		ns.Print("Could not save " .. name .. " — position is not writable.")
+		return false, false
 	end
-	list[#list + 1] = {
-		x = loc.x,
-		y = loc.y,
-		wx = loc.wx,
-		wy = loc.wy,
-		instance = loc.instance,
-		kind = kind,
-		name = name,
-		lastSeen = time(),
-	}
-	if ns.CountNodes() == 1 then
-		ns.Print("Saved " .. name .. ". Type /gm for options.")
+	local zone = ZoneKey(loc.uiMapID)
+	if not zone then
+		ns.Print("Could not save " .. name .. " — saved variables are not loaded.")
+		return false, false
 	end
+	if not CacheAdd(kind, zone, coord, name) then
+		return true, false
+	end
+	FlushPacked()
+	ns.Print("Saved " .. name .. ".")
 	ns.RefreshAll()
 	return true, true
 end
 
 function ns.ClearZone(uiMapID)
-	uiMapID = uiMapID or (ns.GetPlayerLocation() and ns.GetPlayerLocation().uiMapID)
-	if not uiMapID then
+	local zone = ZoneKey(uiMapID)
+	if not zone then
+		local loc = ns.GetPlayerLocation(true)
+		zone = loc and ZoneKey(loc.uiMapID)
+	end
+	if not zone then
 		return 0
 	end
-	local removed = ns.CountNodes(uiMapID)
-	GatherMemoryDB.nodes[MapKey(uiMapID)] = nil
-	GatherMemoryDB.nodes[tostring(uiMapID)] = nil
+	local removed = 0
+	for i = #cache, 1, -1 do
+		if SameMap(cache[i].uiMapID, zone) then
+			table.remove(cache, i)
+			removed = removed + 1
+		end
+	end
+	FlushPacked()
 	ns.RefreshAll()
 	return removed
 end
 
 function ns.ClearAll()
-	local removed = ns.CountNodes()
-	GatherMemoryDB.nodes = {}
+	local removed = #cache
+	for i = #cache, 1, -1 do
+		cache[i] = nil
+	end
+	FlushPacked()
+	if type(GatherMemoryDB) == "table" then
+		GatherMemoryDB.packed = ""
+	end
 	ns.RefreshAll()
 	return removed
 end
 
 function ns.PruneNonTreasureNodes()
-	if not GatherMemoryDB or not GatherMemoryDB.nodes then
-		return 0
-	end
 	local removed = 0
-	for uiMapID, list in pairs(GatherMemoryDB.nodes) do
-		local keep = {}
-		for i = 1, #list do
-			local node = list[i]
-			if node.kind == "chest" and ns.GuessKindFromName(node.name) ~= "chest" then
-				removed = removed + 1
-			else
-				keep[#keep + 1] = node
-			end
+	for i = #cache, 1, -1 do
+		if cache[i].kind == "chest" and ns.GuessKindFromName(cache[i].name) ~= "chest" then
+			table.remove(cache, i)
+			removed = removed + 1
 		end
-		if #keep == 0 then
-			GatherMemoryDB.nodes[uiMapID] = nil
-		else
-			GatherMemoryDB.nodes[uiMapID] = keep
-		end
+	end
+	if removed > 0 then
+		FlushPacked()
+		ns.RefreshAll()
 	end
 	return removed
-end
-
-function ns.ForEachNode(callback)
-	if not GatherMemoryDB or not GatherMemoryDB.nodes then
-		return
-	end
-	for uiMapID, list in pairs(GatherMemoryDB.nodes) do
-		for i = 1, #list do
-			callback(list[i], uiMapID)
-		end
-	end
-end
-
-local function FormatLastSeen(timestamp)
-	if not timestamp or timestamp == 0 then
-		return "Last seen: unknown"
-	end
-	local now = time()
-	local day = 24 * 60 * 60
-	local diff = now - timestamp
-	if diff < day and date("%Y%m%d", now) == date("%Y%m%d", timestamp) then
-		return "Last seen: today"
-	end
-	if diff < (2 * day) then
-		return "Last seen: yesterday"
-	end
-	return "Last seen: " .. date("%b %d, %Y", timestamp)
 end
 
 function ns.ShowNodeTooltip(owner, node)
@@ -377,7 +684,6 @@ function ns.ShowNodeTooltip(owner, node)
 	if skill and skillName then
 		GameTooltip:AddLine("Requires " .. skill .. " " .. skillName, 0.85, 0.75, 0.45)
 	end
-	GameTooltip:AddLine(FormatLastSeen(node.lastSeen), 0.75, 0.75, 0.75)
 	GameTooltip:Show()
 end
 
@@ -419,7 +725,22 @@ local function PrintMenu()
 	ns.Print("/gm " .. table.concat(commandNames, " | ") .. " on | off")
 	print("/gm status")
 	print("/gm clear zone | all")
+	print("/gm prune")
+	print("/gm debug | where")
 	PrintStatus()
+end
+
+local function PrintDebug()
+	ns.Print("saved variables: " .. type(GatherMemoryDB))
+	print("Cached pins: " .. ns.CountNodes())
+	print("Record count field: " .. tostring(type(GatherMemoryDB) == "table" and PublicNumber(GatherMemoryDB.count)))
+	local packed = type(GatherMemoryDB) == "table" and GatherMemoryDB.packed
+	local text = PublicText(packed)
+	if text then
+		print("Packed length: " .. #text)
+	else
+		print("Packed unread, type: " .. type(packed))
+	end
 end
 
 local function ParseOnOff(text)
@@ -440,6 +761,24 @@ local function HandleSlash(msg)
 	end
 	if msg == "status" then
 		PrintStatus()
+		return
+	end
+	if msg == "debug" then
+		PrintDebug()
+		return
+	end
+	if msg == "prune" then
+		local removed = ns.PruneNonTreasureNodes()
+		ns.Print("Removed " .. removed .. " chest records that are not treasure chests.")
+		return
+	end
+	if msg == "where" then
+		if ns.DescribeMinimap then
+			ns.Print("minimap placement")
+			ns.DescribeMinimap()
+		else
+			ns.Print("minimap display is not loaded.")
+		end
 		return
 	end
 	local cmd, rest = string.match(msg, "^(%S+)%s*(.-)$")
@@ -473,12 +812,13 @@ end
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
+frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+frame:RegisterEvent("PLAYER_LOGOUT")
 frame:SetScript("OnEvent", function(_, event, loadedName)
 	if event == "ADDON_LOADED" and loadedName == addonName then
 		ns.InitDB()
 	elseif event == "PLAYER_LOGIN" then
-		ns.InitDB()
-		local pruned = ns.PruneNonTreasureNodes()
+		LoadCache()
 		if ns.InitCollector then
 			ns.InitCollector()
 		end
@@ -488,13 +828,23 @@ frame:SetScript("OnEvent", function(_, event, loadedName)
 		if ns.InitWorldMap then
 			ns.InitWorldMap()
 		end
-		ns.Print("loaded. Type /gm for the menu.")
-		if pruned > 0 then
-			ns.Print("Removed " .. pruned .. " quest objects. Chests are still tracked.")
-			ns.RefreshAll()
+		ns.Print("loaded. " .. ns.CountNodes() .. " nodes saved. Type /gm for the menu.")
+		ns.RefreshAll()
+	elseif event == "PLAYER_ENTERING_WORLD" then
+		LoadCache()
+		ns.RefreshAll()
+		if C_Timer and C_Timer.After then
+			C_Timer.After(1, function()
+				LoadCache()
+				ns.RefreshAll()
+			end)
 		end
+	elseif event == "PLAYER_LOGOUT" then
+		FlushPacked()
 	end
 end)
+
+GatherMemory = ns
 
 SLASH_GATHERMEMORY1 = "/gm"
 SLASH_GATHERMEMORY2 = "/gathermemory"
