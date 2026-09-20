@@ -12,7 +12,21 @@ local ZOOM_RADIUS = {
 local activePins = {}
 local pinPool = {}
 local updater
+local pinHost
 local squareMinimap = false
+
+local function PinHost()
+	if pinHost and pinHost:GetParent() == Minimap then
+		return pinHost
+	end
+	pinHost = CreateFrame("Frame", "GatherMemoryMinimapPins", Minimap)
+	pinHost:SetAllPoints(Minimap)
+	pinHost:SetFrameStrata("HIGH")
+	pinHost:SetFrameLevel(60)
+	pinHost.__tmapKeepShown = true
+	pinHost.__gatherMemoryPin = true
+	return pinHost
+end
 
 local function TobarisuMapLoaded()
 	-- https://warcraft.wiki.gg/wiki/API_C_AddOns.IsAddOnLoaded
@@ -26,16 +40,24 @@ local function TobarisuMapLoaded()
 end
 
 local function ViewRadius()
-	if C_Minimap and C_Minimap.GetViewRadius then
-		local radius = C_Minimap.GetViewRadius()
-		if radius and radius > 0 then
-			return radius
+	local radius
+	pcall(function()
+		if C_Minimap and C_Minimap.GetViewRadius then
+			radius = C_Minimap.GetViewRadius()
 		end
+	end)
+	local ok, valid = pcall(function()
+		return radius and radius > 1 and radius < 2000
+	end)
+	if ok and valid then
+		return radius
 	end
 	local zoom = 0
-	if Minimap.GetZoom then
-		zoom = Minimap:GetZoom() or 0
-	end
+	pcall(function()
+		if Minimap.GetZoom then
+			zoom = Minimap:GetZoom() or 0
+		end
+	end)
 	return ZOOM_RADIUS[zoom] or 150
 end
 
@@ -49,16 +71,38 @@ local function RotateMinimap()
 	return false
 end
 
+local function PinHalfSize()
+	local w, h
+	pcall(function()
+		w = Minimap:GetWidth()
+		h = Minimap:GetHeight()
+	end)
+	local ok = pcall(function()
+		if not w or w < 10 then
+			w = 300
+		end
+		if not h or h < 10 then
+			h = 300
+		end
+	end)
+	if not ok then
+		return 150, 150
+	end
+	return w / 2, h / 2
+end
+
 local function AcquirePin()
 	local pin = table.remove(pinPool)
 	if pin then
 		return pin
 	end
-	pin = CreateFrame("Button", nil, Minimap)
+	pin = CreateFrame("Button", nil, PinHost())
 	pin:SetSize(ns.MINIMAP_PIN_SIZE, ns.MINIMAP_PIN_SIZE)
-	pin:SetFrameStrata(Minimap:GetFrameStrata() or "LOW")
-	pin:SetFrameLevel((Minimap:GetFrameLevel() or 1) + 8)
+	pin:SetFrameStrata("HIGH")
+	pin:SetFrameLevel(50)
 	pin:EnableMouse(true)
+	pin.__tmapKeepShown = true
+	pin.__gatherMemoryPin = true
 	pin.texture = pin:CreateTexture(nil, "OVERLAY")
 	pin.texture:SetAllPoints()
 	pin.texture:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -84,75 +128,97 @@ local function ReleaseAll()
 	end
 end
 
-local function PlayerWorld()
-	local wy, wx, _, instance = UnitPosition("player")
-	if wx and wy then
-		return wx, wy, instance
+local function PlaceOnMinimap(node, loc, radius, halfW, halfH, rotate, sinFacing, cosFacing)
+	if not loc or not loc.x or not loc.y or not node or not node.x or not node.y then
+		return nil
 	end
-	local loc = ns.GetPlayerLocation()
-	if loc then
-		return loc.wx, loc.wy, loc.instance
+	local playerX = ns.PublicNumber(loc.x)
+	local playerY = ns.PublicNumber(loc.y)
+	local nodeX = ns.PublicNumber(node.x)
+	local nodeY = ns.PublicNumber(node.y)
+	if not playerX or not playerY or not nodeX or not nodeY then
+		return nil
 	end
-	return nil
+	local mapW, mapH
+	if C_Map and C_Map.GetMapWorldSize then
+		mapW, mapH = C_Map.GetMapWorldSize(ns.PublicNumber(loc.uiMapID) or loc.uiMapID)
+		mapW = ns.PublicNumber(mapW)
+		mapH = ns.PublicNumber(mapH)
+	end
+	if not mapW or not mapH or mapW == 0 or mapH == 0 then
+		mapW, mapH = 1000, 1000
+	end
+	radius = ns.PublicNumber(radius) or 150
+	halfW = ns.PublicNumber(halfW) or 150
+	halfH = ns.PublicNumber(halfH) or 150
+	-- Map coords run +x east and +y south; the minimap runs +x east and +y north.
+	local east = (nodeX - playerX) * mapW
+	local north = (playerY - nodeY) * mapH
+	if rotate then
+		-- GetPlayerFacing is 0 at north and increases counterclockwise, so forward
+		-- is (-sin, cos) in east/north terms. Rotate that onto screen up.
+		east, north = east * cosFacing + north * sinFacing, north * cosFacing - east * sinFacing
+	end
+	local diffX = east / radius
+	local diffY = north / radius
+	if squareMinimap then
+		if diffX > 1 then
+			diffX = 1
+		elseif diffX < -1 then
+			diffX = -1
+		end
+		if diffY > 1 then
+			diffY = 1
+		elseif diffY < -1 then
+			diffY = -1
+		end
+	else
+		local dist = math.sqrt(diffX * diffX + diffY * diffY)
+		if dist > 0.9 then
+			diffX = diffX / dist * 0.9
+			diffY = diffY / dist * 0.9
+		end
+	end
+	return diffX * halfW, diffY * halfH
 end
 
 function ns.UpdateMinimap(force)
 	if not updater then
 		return
 	end
-	if not ns.GetSetting("showMinimap") or not Minimap:IsVisible() then
+	if ns.GetSetting("showMinimap") == false then
 		ReleaseAll()
 		return
 	end
-
-	local playerX, playerY, instance = PlayerWorld()
-	if not playerX or not playerY then
-		ReleaseAll()
+	if not Minimap then
 		return
 	end
+	squareMinimap = TobarisuMapLoaded()
+	if squareMinimap then
+		ns.MINIMAP_PIN_SIZE = 20
+	end
 
+	local loc = ns.GetPlayerLocation(true)
 	local radius = ViewRadius()
-	local width = Minimap:GetWidth() / 2
-	local height = Minimap:GetHeight() / 2
-	local facing = GetPlayerFacing() or 0
+	local width, height = PinHalfSize()
+	local facing = ns.PublicNumber(GetPlayerFacing()) or 0
 	local rotate = RotateMinimap()
-	local sinFacing = math.sin(facing)
-	local cosFacing = math.cos(facing)
+	local sinFacing, cosFacing = math.sin(facing), math.cos(facing)
 
 	local needed = {}
 	ns.ForEachNode(function(node)
-		if not ns.IsKindShown(node.kind) then
+		if ns.IsKindShown(node.kind) == false then
 			return
 		end
-		if not node.wx or not node.wy then
+		local px, py = PlaceOnMinimap(node, loc, radius, width, height, rotate, sinFacing, cosFacing)
+		if px == nil or py == nil then
 			return
 		end
-		if node.instance ~= nil and instance ~= nil and node.instance ~= instance then
-			return
-		end
-		local xDist = playerX - node.wx
-		local yDist = playerY - node.wy
-		if rotate then
-			local dx, dy = xDist, yDist
-			xDist = dx * cosFacing - dy * sinFacing
-			yDist = dx * sinFacing + dy * cosFacing
-		end
-		local diffX = xDist / radius
-		local diffY = yDist / radius
-		local onMap
-		if squareMinimap then
-			onMap = math.abs(diffX) < 1 and math.abs(diffY) < 1
-		else
-			local dist2 = (diffX * diffX + diffY * diffY) / (0.9 * 0.9)
-			onMap = dist2 <= 1
-		end
-		if onMap then
-			needed[#needed + 1] = {
-				node = node,
-				x = diffX * width,
-				y = -diffY * height,
-			}
-		end
+		needed[#needed + 1] = {
+			node = node,
+			x = px,
+			y = py,
+		}
 	end)
 
 	while #activePins > #needed do
@@ -170,12 +236,54 @@ function ns.UpdateMinimap(force)
 			pin.texture:SetTexture(ns.GetNodeIcon(item.node.name, item.node.kind))
 		end
 		pin:SetSize(ns.MINIMAP_PIN_SIZE, ns.MINIMAP_PIN_SIZE)
-		pin:SetParent(Minimap)
-		pin:SetFrameStrata(Minimap:GetFrameStrata() or "LOW")
-		pin:SetFrameLevel((Minimap:GetFrameLevel() or 1) + 8)
+		pin:SetParent(PinHost())
+		pin:SetFrameStrata("HIGH")
+		pin:SetFrameLevel(50)
 		pin:ClearAllPoints()
-		pin:SetPoint("CENTER", Minimap, "CENTER", item.x, item.y)
+		pin:SetPoint("CENTER", PinHost(), "CENTER", item.x, item.y)
+		pin.__tmapKeepShown = true
 		pin:Show()
+	end
+end
+
+-- Prints the raw numbers the client hands back, so a bad pin position can be
+-- traced to the input that caused it instead of being guessed at.
+function ns.DescribeMinimap()
+	local loc = ns.GetPlayerLocation(true)
+	if not loc then
+		print("player position unavailable (secret value or no map)")
+		return
+	end
+	print(string.format("player: map %s at %.4f, %.4f", tostring(loc.uiMapID), loc.x, loc.y))
+	local rawW, rawH
+	if C_Map and C_Map.GetMapWorldSize then
+		rawW, rawH = C_Map.GetMapWorldSize(loc.uiMapID)
+	end
+	print(string.format("map world size: %s x %s yards (usable %s x %s)",
+		tostring(rawW), tostring(rawH), tostring(ns.PublicNumber(rawW)), tostring(ns.PublicNumber(rawH))))
+	local radius = ViewRadius()
+	local halfW, halfH = PinHalfSize()
+	local rotate = RotateMinimap()
+	local facing = ns.PublicNumber(GetPlayerFacing())
+	print(string.format("view radius: %s yards, minimap half-size %.0f x %.0f", tostring(radius), halfW, halfH))
+	print(string.format("square: %s, rotating: %s, facing: %s",
+		tostring(squareMinimap), tostring(rotate), tostring(facing)))
+	local sinFacing, cosFacing = math.sin(facing or 0), math.cos(facing or 0)
+	local shown = 0
+	ns.ForEachNode(function(node)
+		local px, py = PlaceOnMinimap(node, loc, radius, halfW, halfH, rotate, sinFacing, cosFacing)
+		local mapW = ns.PublicNumber(rawW) or 1000
+		local mapH = ns.PublicNumber(rawH) or 1000
+		local east = (node.x - loc.x) * mapW
+		local north = (loc.y - node.y) * mapH
+		shown = shown + 1
+		print(string.format("  %s (%s) at %.4f,%.4f | %.0fy east %.0fy north | pin %s,%s",
+			tostring(node.name), tostring(node.kind), node.x, node.y, east, north,
+			px and string.format("%.0f", px) or "nil",
+			py and string.format("%.0f", py) or "nil"))
+	end)
+	if shown == 0 then
+		print("  no nodes to place")
 	end
 end
 
@@ -206,5 +314,17 @@ function ns.InitMinimap()
 		end
 		ns.UpdateMinimap(true)
 	end)
+	ns.UpdateMinimap(true)
+end
+
+function ns.RebuildMinimap()
+	ReleaseAll()
+	for i = #pinPool, 1, -1 do
+		pinPool[i] = nil
+	end
+	if not updater then
+		ns.InitMinimap()
+		return
+	end
 	ns.UpdateMinimap(true)
 end

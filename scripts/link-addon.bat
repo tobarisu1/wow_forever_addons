@@ -59,10 +59,15 @@ if %LINKED%==0 (
 )
 
 echo AddOns path: %ADDONS_DIR%
+echo.
+echo Copied %LINKED% addon^(s^). Re-run this after editing, since the client now has
+echo its own copy. Fully restart WoW if the game is open.
 exit /b 0
 
 :usage
 echo Usage: %~nx0 [client-folder-or-addons-path]
+echo Copies each addon in as a real folder. Linked addons load their Lua but the
+echo client never reads back their SavedVariables.
 echo Default: %WOW_ROOT%\%DEFAULT_CLIENT%\Interface\AddOns
 echo Examples:
 echo   %~nx0
@@ -93,25 +98,17 @@ exit /b 0
 set "SRC=%~1"
 set "DEST=%~2"
 set "NAME=%~nx1"
-if exist "%DEST%" (
-	rmdir "%DEST%" 2>nul
-	if exist "%DEST%" (
-		echo Cannot replace existing folder: %DEST%
-		echo Move it aside, then run this script again.
-		exit /b 1
-	)
+rem Remove a junction or symlink left by an older version of this script. A linked
+rem addon folder loads its Lua normally but the client does not read its
+rem SavedVariables back, so saved data silently resets on every login.
+for %%L in ("%DEST%") do if exist "%DEST%" (
+	dir /al /b "%DEST%\.." 2>nul | findstr /I /X "%NAME%" >nul && rmdir "%DEST%" 2>nul
 )
-mklink /J "%DEST%" "%SRC%" >nul 2>&1
-if not errorlevel 1 (
-	echo Linked %NAME% -^> %DEST%
-	exit /b 0
+rem /MIR mirrors the folder so files deleted from the repo also leave the client.
+robocopy "%SRC%" "%DEST%" /MIR /NFL /NDL /NJH /NJS /NP /XD .git /XF .gitignore >nul
+if errorlevel 8 (
+	echo Failed to copy %NAME% to %DEST%.
+	exit /b 1
 )
-mklink /D "%DEST%" "%SRC%" >nul 2>&1
-if not errorlevel 1 (
-	echo Linked %NAME% -^> %DEST%
-	exit /b 0
-)
-echo Failed to link %NAME%.
-echo Run Command Prompt as Administrator, or enable Developer Mode:
-echo Settings ^> System ^> For developers ^> Developer Mode
-exit /b 1
+echo Copied %NAME% -^> %DEST%
+exit /b 0

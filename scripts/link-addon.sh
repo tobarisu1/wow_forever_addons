@@ -7,6 +7,8 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 usage() {
 	echo "Usage: $0 [client-folder-or-addons-path]"
+	echo "Copies each addon into the client as a real folder. Symlinked addons load"
+	echo "their Lua but the client never reads back their SavedVariables."
 	echo "Default: $WOW_ROOT/$DEFAULT_CLIENT/Interface/AddOns"
 	echo "Examples:"
 	echo "  $0"
@@ -59,7 +61,7 @@ fi
 mkdir -p "$addons_dir"
 
 shopt -s nullglob
-linked=0
+copied=0
 for addon_dir in "$REPO_ROOT"/*/; do
 	src="${addon_dir%/}"
 	name="$(basename "$src")"
@@ -67,14 +69,39 @@ for addon_dir in "$REPO_ROOT"/*/; do
 		continue
 	fi
 	dest="$addons_dir/$name"
-	ln -sfn "$src" "$dest"
-	echo "Linked $name -> $dest"
-	linked=$((linked + 1))
+
+	# Replace any symlink left by an older version of this script. A symlinked addon
+	# folder loads its Lua normally but the client does not read its SavedVariables
+	# back, so saved data silently resets on every login.
+	if [[ -L "$dest" ]]; then
+		rm -f "$dest"
+	fi
+
+	if command -v rsync >/dev/null 2>&1; then
+		mkdir -p "$dest"
+		# --delete so a file removed from the repo also disappears from the client.
+		rsync -a --delete \
+			--exclude '.git/' \
+			--exclude '.gitignore' \
+			--exclude '.DS_Store' \
+			"$src"/ "$dest"/
+	else
+		rm -rf "$dest"
+		cp -R "$src" "$dest"
+		rm -rf "$dest/.git" "$dest/.gitignore"
+		find "$dest" -name '.DS_Store' -delete 2>/dev/null || true
+	fi
+
+	echo "Copied $name -> $dest"
+	copied=$((copied + 1))
 done
 
-if [[ "$linked" -eq 0 ]]; then
+if [[ "$copied" -eq 0 ]]; then
 	echo "No addon folders found in $REPO_ROOT (expected FolderName/FolderName.toc)"
 	exit 1
 fi
 
 echo "AddOns path: $addons_dir"
+echo
+echo "Copied $copied addon(s). Re-run this after editing, since the client now has"
+echo "its own copy. Fully restart WoW if the game is open."

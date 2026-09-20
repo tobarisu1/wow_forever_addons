@@ -67,7 +67,7 @@ local function CreateProvider()
 
 	function dataProvider:RefreshAllData()
 		self:RemoveAllData()
-		if not ns.GetSetting("showWorldMap") then
+		if ns.GetSetting("showWorldMap") == false then
 			return
 		end
 		local map = self:GetMap()
@@ -75,23 +75,31 @@ local function CreateProvider()
 			return
 		end
 		local mapID = map:GetMapID()
-		local list = ns.GetNodeList(mapID)
-		if not list then
-			return
-		end
-		for i = 1, #list do
-			local node = list[i]
-			if ns.IsKindShown(node.kind) and node.x and node.y then
-				map:AcquirePin("GatherMemoryPinTemplate", node)
+		ns.ForEachNode(function(node)
+			if not ns.IsKindShown(node.kind) then
+				return
 			end
-		end
+			local x, y
+			pcall(function()
+				x, y = ns.GetNodeMapPosition(node, mapID)
+			end)
+			if not x or not y then
+				return
+			end
+			map:AcquirePin("GatherMemoryPinTemplate", {
+				name = node.name,
+				kind = node.kind,
+				x = x,
+				y = y,
+			})
+		end)
 	end
 
 	return dataProvider
 end
 
 function ns.RefreshWorldMap()
-	if provider and WorldMapFrame and WorldMapFrame.IsShown and WorldMapFrame:IsShown() then
+	if provider then
 		provider:RefreshAllData()
 	end
 end

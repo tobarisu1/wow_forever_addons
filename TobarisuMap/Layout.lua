@@ -10,9 +10,6 @@ local CHROME_GLOBALS = {
 	"MinimapBorderTop",
 	"MinimapNorthTag",
 	"MinimapCompassTexture",
-	"MiniMapTracking",
-	"MiniMapTrackingButton",
-	"MiniMapTrackingFrame",
 	"TimeManagerClockButton",
 	"AddonCompartmentFrame",
 	"ExpansionLandingPageMinimapButton",
@@ -62,16 +59,12 @@ local function HideChrome()
 		HideFrame(Minimap.ZoomHitArea)
 		HideFrame(Minimap.BorderTop)
 		HideFrame(Minimap.ZoneTextButton)
-		HideFrame(Minimap.Tracking)
-		HideFrame(Minimap.TrackingButton)
 	end
 
 	local cluster = ns.GetCluster()
 	if cluster and cluster ~= Minimap then
 		HideFrame(cluster.BorderTop)
 		HideFrame(cluster.ZoneTextButton)
-		HideFrame(cluster.Tracking)
-		HideFrame(cluster.TrackingButton)
 		HideFrame(cluster.ZoomIn)
 		HideFrame(cluster.ZoomOut)
 	end
@@ -151,6 +144,106 @@ function ns.PlaceCalendar()
 	calendar:Show()
 	ns.HideDayNightCenter()
 	calendarPlacing = false
+end
+
+local trackingPlacing = false
+local trackingHooked = false
+
+local function TrackingFrame()
+	local cluster = ns.GetCluster()
+	if cluster and cluster.Tracking then
+		return cluster.Tracking
+	end
+	if Minimap and Minimap.Tracking then
+		return Minimap.Tracking
+	end
+	return _G.MiniMapTracking or _G.MiniMapTrackingFrame
+end
+
+local function TrackingButton(tracking)
+	if tracking and tracking.Button then
+		return tracking.Button
+	end
+	if Minimap and Minimap.TrackingButton then
+		return Minimap.TrackingButton
+	end
+	return _G.MiniMapTrackingButton
+end
+
+local function HookTracking(tracking)
+	if trackingHooked or not tracking then
+		return
+	end
+	trackingHooked = true
+	hooksecurefunc(tracking, "SetPoint", function()
+		if trackingPlacing or not ns.IsEnabled() then
+			return
+		end
+		ns.PlaceTracking()
+	end)
+	hooksecurefunc(tracking, "SetParent", function(_, parent)
+		if trackingPlacing or not ns.IsEnabled() then
+			return
+		end
+		if parent ~= UIParent then
+			ns.PlaceTracking()
+		end
+	end)
+end
+
+function ns.PlaceTracking()
+	-- Tracking / scope button: dock to the top-left corner of the square map.
+	local tracking = TrackingFrame()
+	if not tracking then
+		return
+	end
+	if trackingPlacing then
+		return
+	end
+	trackingPlacing = true
+	tracking.__tmapKeepShown = true
+	local anchor = Minimap or ns.GetCluster()
+	if not anchor then
+		trackingPlacing = false
+		return
+	end
+	HookTracking(tracking)
+	tracking:SetParent(UIParent)
+	tracking:ClearAllPoints()
+	tracking:SetPoint("CENTER", anchor, "TOPLEFT", 0, 0)
+	tracking:SetSize(28, 28)
+	tracking:SetFrameStrata("HIGH")
+	tracking:SetFrameLevel(64)
+	if tracking.Background then
+		tracking.Background:ClearAllPoints()
+		tracking.Background:SetAllPoints()
+		tracking.Background:Show()
+	end
+	local button = TrackingButton(tracking)
+	if button then
+		button.__tmapKeepShown = true
+		button:SetParent(tracking)
+		button:ClearAllPoints()
+		button:SetPoint("CENTER")
+		button:SetSize(28, 28)
+		button:EnableMouse(true)
+		if button.SetMouseClickEnabled then
+			button:SetMouseClickEnabled(true)
+		end
+		if button.SetMouseMotionEnabled then
+			button:SetMouseMotionEnabled(true)
+		end
+		if button.SetHitRectInsets then
+			button:SetHitRectInsets(0, 0, 0, 0)
+		end
+		if button.Enable then
+			button:Enable()
+		end
+		-- Do not call button:Show(); MiniMapTrackingButtonMixin:Show(shown)
+		-- treats a missing argument as hide.
+	end
+	tracking:Show()
+	trackingPlacing = false
 end
 
 local function TexturePathLooksLikeDayNight(value)
@@ -266,7 +359,15 @@ local function DescribeRegion(region)
 end
 
 local function ShouldSkipFrame(frame)
-	return frame == ns.pulse or frame == ns.header or frame == ns.mover or frame == CalendarFrame()
+	local tracking = TrackingFrame()
+	local trackingButton = TrackingButton(tracking)
+	return frame == ns.pulse
+		or frame == ns.header
+		or frame == ns.mover
+		or frame == CalendarFrame()
+		or frame == tracking
+		or frame == trackingButton
+		or (frame and frame.__gatherMemoryPin)
 end
 
 local function IsLikelyDayNightTexture(region)
@@ -448,6 +549,7 @@ function ns.DumpMinimapChrome()
 	dumpFrame("Minimap", Minimap)
 	dumpFrame("MinimapCluster", MinimapCluster)
 	dumpFrame("GameTimeFrame", CalendarFrame())
+	dumpFrame("Tracking", TrackingFrame())
 	print("  GameTimeTexture: " .. DescribeRegion(_G.GameTimeTexture))
 end
 
@@ -567,6 +669,9 @@ function ns.ApplySize()
 	if ns.PlaceCalendar then
 		ns.PlaceCalendar()
 	end
+	if ns.PlaceTracking then
+		ns.PlaceTracking()
+	end
 end
 
 function ns.ApplySquareMask()
@@ -640,6 +745,7 @@ function ns.InitLayout()
 	HideChrome()
 	ns.ApplySquareMask()
 	ns.PlaceCalendar()
+	ns.PlaceTracking()
 	ns.HideDayNightCenter()
 
 	cluster:SetMovable(true)
@@ -685,6 +791,10 @@ function ns.InitLayout()
 	ns.ApplyVisibility()
 	ns.UpdateMover()
 
+	if GatherMemory and GatherMemory.RebuildMinimap then
+		GatherMemory.RebuildMinimap()
+	end
+
 	local zoneFrame = CreateFrame("Frame")
 	zoneFrame:RegisterEvent("ZONE_CHANGED")
 	zoneFrame:RegisterEvent("ZONE_CHANGED_INDOORS")
@@ -696,6 +806,9 @@ function ns.InitLayout()
 			ns.ApplySquareMask()
 			ns.ApplySize()
 			ns.HideDayNightCenter()
+			if GatherMemory and GatherMemory.RebuildMinimap then
+				GatherMemory.RebuildMinimap()
+			end
 		end
 	end)
 end

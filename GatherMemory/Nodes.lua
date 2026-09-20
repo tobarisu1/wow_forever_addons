@@ -116,16 +116,44 @@ local catalog = {
 }
 
 local byName = {}
+local byID = {}
 for i = 1, #catalog do
 	local entry = catalog[i]
+	entry.id = i
 	byName[string.lower(entry.name)] = entry
+	byID[i] = entry
 end
 
 function ns.GetNodeInfo(name)
+	name = ns.PublicText(name)
 	if not name then
 		return nil
 	end
 	return byName[string.lower(name)]
+end
+
+function ns.GetIDForNode(name)
+	local info = ns.GetNodeInfo(name)
+	if not info then
+		return nil
+	end
+	return info.id
+end
+
+function ns.GetNameForNode(id)
+	local text = ns.PublicText(id)
+	if text and not tonumber(text) then
+		return text
+	end
+	id = ns.PublicNumber(id) or tonumber(text)
+	if type(id) == "string" then
+		return id
+	end
+	local info = byID[id]
+	if not info then
+		return nil
+	end
+	return info.name
 end
 
 function ns.GetNodeSkill(name)

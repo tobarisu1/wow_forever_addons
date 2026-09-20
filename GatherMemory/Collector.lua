@@ -14,16 +14,7 @@ local function RememberSpell(spellID, kind)
 end
 
 local function PublicText(value)
-	if value == nil or value == "" then
-		return nil
-	end
-	if issecretvalue then
-		local ok, secret = pcall(issecretvalue, value)
-		if ok and secret then
-			return nil
-		end
-	end
-	return value
+	return ns.PublicText(value)
 end
 
 local function TooltipNodeName()
