@@ -1,0 +1,9 @@
+## Interface: 120105
+## Title: Angler
+## Notes: Double-right-click to fish, lure menu, background sound. /an to toggle.
+## Author: tobarisu1
+## Version: 0.1.0
+## IconTexture: Interface\Icons\INV_Fishingpole_02
+## SavedVariables: AnglerDB
+
+Angler.lua
