@@ -1,0 +1,9 @@
+## Interface: 120105
+## Title: SplitChat
+## Notes: Chat on the left, logs on the right. /sc to toggle.
+## Author: tobarisu1
+## Version: 0.1.0
+## IconTexture: Interface\Icons\INV_Misc_Note_01
+## SavedVariables: SplitChatDB
+
+SplitChat.lua

@@ -1,10 +1,12 @@
 ## Interface: 120105
 ## Title: BagMaster
-## Notes: Combined bags with per-bag sections. /bm to toggle.
+## Notes: Sleek bag window with category or per-bag sections. /bm to toggle.
 ## Author: tobarisu1
 ## Version: 0.1.0
 ## IconTexture: Interface\Icons\INV_Misc_Bag_08
 ## SavedVariables: BagMasterDB
 
 BagMaster.lua
+Items.lua
+Window.lua
 Layout.lua

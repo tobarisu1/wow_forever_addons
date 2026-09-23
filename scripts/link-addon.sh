@@ -4,16 +4,29 @@ set -euo pipefail
 WOW_ROOT="${WOW_ROOT:-/Applications/World of Warcraft}"
 DEFAULT_CLIENT="_classic_beta_"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+INCLUDE_SKIPPED=0
 
 usage() {
-	echo "Usage: $0 [client-folder-or-addons-path]"
+	echo "Usage: $0 [--all] [client-folder-or-addons-path]"
 	echo "Copies each addon into the client as a real folder. Symlinked addons load"
 	echo "their Lua but the client never reads back their SavedVariables."
 	echo "Default: $WOW_ROOT/$DEFAULT_CLIENT/Interface/AddOns"
+	echo "By default BagMaster and SplitChat are not copied (and are removed from"
+	echo "AddOns if a previous copy is there). Pass --all to include them."
 	echo "Examples:"
 	echo "  $0"
+	echo "  $0 --all"
 	echo "  $0 $DEFAULT_CLIENT"
 	echo "  $0 \"$WOW_ROOT/$DEFAULT_CLIENT/Interface/AddOns\""
+}
+
+skip_addon() {
+	local name="$1"
+	[[ "$INCLUDE_SKIPPED" -eq 1 ]] && return 1
+	case "$name" in
+		BagMaster|SplitChat) return 0 ;;
+		*) return 1 ;;
+	esac
 }
 
 list_clients() {
@@ -29,17 +42,31 @@ list_clients() {
 	fi
 }
 
-if [[ $# -gt 1 ]]; then
-	usage
-	exit 1
-fi
-
-if [[ $# -eq 1 && ("$1" == "-h" || "$1" == "--help") ]]; then
-	usage
-	exit 0
-fi
-
-target="${1:-$DEFAULT_CLIENT}"
+target=""
+for arg in "$@"; do
+	case "$arg" in
+		-h|--help)
+			usage
+			exit 0
+			;;
+		--all)
+			INCLUDE_SKIPPED=1
+			;;
+		-*)
+			echo "Unknown option: $arg"
+			usage
+			exit 1
+			;;
+		*)
+			if [[ -n "$target" ]]; then
+				usage
+				exit 1
+			fi
+			target="$arg"
+			;;
+	esac
+done
+target="${target:-$DEFAULT_CLIENT}"
 
 if [[ "$target" == */Interface/AddOns || "$target" == */Interface/AddOns/ ]]; then
 	addons_dir="${target%/}"
@@ -62,6 +89,7 @@ mkdir -p "$addons_dir"
 
 shopt -s nullglob
 copied=0
+skipped=0
 for addon_dir in "$REPO_ROOT"/*/; do
 	src="${addon_dir%/}"
 	name="$(basename "$src")"
@@ -69,6 +97,17 @@ for addon_dir in "$REPO_ROOT"/*/; do
 		continue
 	fi
 	dest="$addons_dir/$name"
+
+	if skip_addon "$name"; then
+		if [[ -e "$dest" || -L "$dest" ]]; then
+			rm -rf "$dest"
+			echo "Skipped $name (removed from AddOns). Pass --all to copy."
+		else
+			echo "Skipped $name. Pass --all to copy."
+		fi
+		skipped=$((skipped + 1))
+		continue
+	fi
 
 	# Replace any symlink left by an older version of this script. A symlinked addon
 	# folder loads its Lua normally but the client does not read its SavedVariables
@@ -96,7 +135,7 @@ for addon_dir in "$REPO_ROOT"/*/; do
 	copied=$((copied + 1))
 done
 
-if [[ "$copied" -eq 0 ]]; then
+if [[ "$copied" -eq 0 && "$skipped" -eq 0 ]]; then
 	echo "No addon folders found in $REPO_ROOT (expected FolderName/FolderName.toc)"
 	exit 1
 fi
