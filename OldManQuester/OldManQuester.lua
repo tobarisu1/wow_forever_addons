@@ -1,4 +1,4 @@
-local addonName = ...
+local addonName, ns = ...
 
 local PREFIX = "|cffffcc66OldManQuester|r"
 
@@ -57,9 +57,8 @@ local function IsEnabled()
 	return OldManQuesterDB and OldManQuesterDB.enabled
 end
 
-local function IsItemsEnabled()
-	return IsEnabled() and OldManQuesterDB and OldManQuesterDB.highlightItems
-end
+ns.FRAME_SCALE = FRAME_SCALE
+ns.IsEnabled = IsEnabled
 
 local function IsTrackerEnabled()
 	return IsEnabled() and OldManQuesterDB and OldManQuesterDB.trackerDialog
@@ -251,7 +250,9 @@ local function ApplyFrameSizes()
 	SnapshotTargets()
 	ApplyDialogScale(QuestFrame)
 	ApplyDialogScale(GossipFrame)
-	ApplyDialogScale(CharacterFrame)
+	if ns.ApplyCharacterWindow then
+		ns.ApplyCharacterWindow()
+	end
 end
 
 local function MapIsMaximized()
@@ -349,151 +350,6 @@ end
 
 local function OnQuestFrameHide()
 	RestoreNamedWraps()
-end
-
-local QUEST_ITEM_CLASS = Enum and Enum.ItemClass and Enum.ItemClass.Questitem
-
-local function SlotIsQuestItem(bag, slot)
-	if not bag or not slot or not C_Container then
-		return false
-	end
-	if C_Container.GetContainerItemQuestInfo then
-		local questInfo = C_Container.GetContainerItemQuestInfo(bag, slot)
-		if questInfo and (questInfo.isQuestItem or questInfo.questID) then
-			return true
-		end
-	end
-	if not C_Container.GetContainerItemInfo then
-		return false
-	end
-	local info = C_Container.GetContainerItemInfo(bag, slot)
-	if not info or not info.itemID then
-		return false
-	end
-	if info.classID and QUEST_ITEM_CLASS and info.classID == QUEST_ITEM_CLASS then
-		return true
-	end
-	if C_Item and C_Item.GetItemInfoInstant then
-		local _, _, _, _, _, classID = C_Item.GetItemInfoInstant(info.itemID)
-		if QUEST_ITEM_CLASS and classID == QUEST_ITEM_CLASS then
-			return true
-		end
-	end
-	return false
-end
-
-local function EnsureItemHighlight(button)
-	if button.OldManQuesterHL then
-		return button.OldManQuesterHL
-	end
-
-	local hl = CreateFrame("Frame", nil, button)
-	hl:SetAllPoints(button)
-	hl:EnableMouse(false)
-
-	local icon = button.Icon or button.icon
-	local wash = hl:CreateTexture(nil, "ARTWORK")
-	if icon then
-		wash:SetAllPoints(icon)
-	else
-		wash:SetAllPoints(hl)
-	end
-	wash:SetTexture("Interface\\Buttons\\WHITE8X8")
-	wash:SetVertexColor(1, 0.9, 0, 0.55)
-	wash:SetBlendMode("ADD")
-	hl.wash = wash
-
-	local border = hl:CreateTexture(nil, "OVERLAY")
-	border:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
-	border:SetBlendMode("ADD")
-	border:SetVertexColor(1, 1, 0.15, 1)
-	border:SetPoint("CENTER")
-	hl.border = border
-
-	local edge = CreateFrame("Frame", nil, hl, "BackdropTemplate")
-	edge:SetPoint("TOPLEFT", -1, 1)
-	edge:SetPoint("BOTTOMRIGHT", 1, -1)
-	edge:SetBackdrop({
-		edgeFile = "Interface\\Buttons\\WHITE8X8",
-		edgeSize = 3,
-	})
-	edge:SetBackdropBorderColor(1, 1, 0, 1)
-	edge:EnableMouse(false)
-	hl.edge = edge
-
-	button.OldManQuesterHL = hl
-	return hl
-end
-
-local function HideItemHighlight(button)
-	if button and button.OldManQuesterHL then
-		button.OldManQuesterHL:Hide()
-	end
-end
-
-local function ApplyItemHighlight(button)
-	if not button then
-		return
-	end
-	if not IsItemsEnabled() then
-		HideItemHighlight(button)
-		return
-	end
-
-	local bag = button.GetBagID and button:GetBagID()
-	local slot = button.GetID and button:GetID()
-	if not SlotIsQuestItem(bag, slot) then
-		HideItemHighlight(button)
-		return
-	end
-
-	local hl = EnsureItemHighlight(button)
-	hl:SetFrameLevel(button:GetFrameLevel() + 1)
-	local size = button:GetWidth()
-	if size and size > 0 then
-		hl.border:SetSize(size * 1.85, size * 1.85)
-	end
-	hl:Show()
-end
-
-local function ForEachShownBagButton(callback)
-	if not ContainerFrameSettingsManager or not ContainerFrameSettingsManager.GetBagsShown then
-		return
-	end
-	local bags = ContainerFrameSettingsManager:GetBagsShown()
-	if not bags then
-		return
-	end
-	for i = 1, #bags do
-		local bag = bags[i]
-		if bag.EnumerateValidItems then
-			for _, itemButton in bag:EnumerateValidItems() do
-				callback(itemButton)
-			end
-		end
-	end
-end
-
-local function RefreshBagHighlights()
-	ForEachShownBagButton(ApplyItemHighlight)
-end
-
-local function OnBagQuestItemUpdate(button, isQuestItem, questID)
-	if not IsItemsEnabled() then
-		HideItemHighlight(button)
-		return
-	end
-	if isQuestItem or questID then
-		local hl = EnsureItemHighlight(button)
-		hl:SetFrameLevel(button:GetFrameLevel() + 1)
-		local size = button:GetWidth()
-		if size and size > 0 then
-			hl.border:SetSize(size * 1.85, size * 1.85)
-		end
-		hl:Show()
-		return
-	end
-	ApplyItemHighlight(button)
 end
 
 local TRACKER_MODULE_NAMES = {
@@ -708,15 +564,10 @@ local function InstallHooks()
 	end)
 
 	HookOnce("characterFrameShow", function()
-		if not CharacterFrame then
+		if not CharacterFrame or not ns.ApplyCharacterWindow then
 			return false
 		end
-		CharacterFrame:HookScript("OnShow", function()
-			if not IsEnabled() then
-				return
-			end
-			ApplyDialogScale(CharacterFrame)
-		end)
+		ns.ApplyCharacterWindow()
 		return true
 	end)
 
@@ -729,22 +580,6 @@ local function InstallHooks()
 			hooksecurefunc(WorldMapFrame, "SynchronizeDisplayState", ApplyWorldMapScale)
 		end
 		ApplyWorldMapScale()
-		return true
-	end)
-
-	HookOnce("bagQuestItem", function()
-		if not ContainerFrameItemButtonMixin or not ContainerFrameItemButtonMixin.UpdateQuestItem then
-			return false
-		end
-		hooksecurefunc(ContainerFrameItemButtonMixin, "UpdateQuestItem", OnBagQuestItemUpdate)
-		return true
-	end)
-
-	HookOnce("bagUpdateItems", function()
-		if not ContainerFrameMixin or not ContainerFrameMixin.UpdateItems then
-			return false
-		end
-		hooksecurefunc(ContainerFrameMixin, "UpdateItems", RefreshBagHighlights)
 		return true
 	end)
 
@@ -778,9 +613,6 @@ local function InitDB()
 	if OldManQuesterDB.enabled == nil then
 		OldManQuesterDB.enabled = true
 	end
-	if OldManQuesterDB.highlightItems == nil then
-		OldManQuesterDB.highlightItems = true
-	end
 	if OldManQuesterDB.trackerDialog == nil then
 		OldManQuesterDB.trackerDialog = true
 	end
@@ -788,7 +620,6 @@ end
 
 local function PrintStatus()
 	Print("dialog " .. StatusText()
-		.. "  items " .. BoolText(IsItemsEnabled())
 		.. "  tracker " .. BoolText(IsTrackerEnabled()))
 end
 
@@ -796,7 +627,6 @@ local function SetEnabled(enabled)
 	OldManQuesterDB.enabled = enabled
 	ApplyAll()
 	RefreshOpenDialogs()
-	RefreshBagHighlights()
 	ApplyTrackerDialog()
 	PrintStatus()
 end
@@ -811,15 +641,6 @@ local function ParseOnOff(text)
 	return nil
 end
 
-local function SetItemsEnabled(enabled)
-	OldManQuesterDB.highlightItems = enabled
-	RefreshBagHighlights()
-	Print("items " .. BoolText(IsItemsEnabled()))
-	if enabled and not IsEnabled() then
-		Print("Turn the addon on with /omq on to show highlights.")
-	end
-end
-
 local function SetTrackerEnabled(enabled)
 	OldManQuesterDB.trackerDialog = enabled
 	ApplyTrackerDialog()
@@ -831,7 +652,6 @@ end
 
 local function PrintMenu()
 	Print("/omq on | off | status")
-	print("/omq items on | off")
 	print("/omq tracker on | off")
 	PrintStatus()
 end
@@ -851,15 +671,6 @@ local function HandleSlash(msg)
 		return
 	end
 	local cmd, rest = string.match(msg, "^(%S+)%s*(.-)$")
-	if cmd == "items" then
-		local value = ParseOnOff(rest)
-		if value == nil then
-			Print("/omq items on | off")
-			return
-		end
-		SetItemsEnabled(value)
-		return
-	end
 	if cmd == "tracker" then
 		local value = ParseOnOff(rest)
 		if value == nil then
@@ -879,7 +690,6 @@ local function TryStart()
 	if IsEnabled() then
 		ApplyAll()
 	end
-	RefreshBagHighlights()
 	ApplyTrackerDialog()
 end
 

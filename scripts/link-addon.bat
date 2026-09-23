@@ -6,20 +6,31 @@ set "SCRIPT_DIR=%~dp0"
 pushd "%SCRIPT_DIR%.."
 set "REPO_ROOT=%CD%"
 popd
+set "INCLUDE_SKIPPED=0"
+set "TARGET="
 
+:parse_args
+if "%~1"=="" goto :args_done
+if "%~1"=="-h" goto :usage
+if "%~1"=="--help" goto :usage
+if /I "%~1"=="--all" (
+	set "INCLUDE_SKIPPED=1"
+	shift
+	goto :parse_args
+)
+if not "%TARGET%"=="" goto :usage
+set "TARGET=%~1"
+shift
+goto :parse_args
+
+:args_done
 if not defined WOW_ROOT (
 	set "WOW_ROOT=%ProgramFiles(x86)%\World of Warcraft"
 	if not exist "%WOW_ROOT%" set "WOW_ROOT=%ProgramFiles%\World of Warcraft"
 )
 
-if "%~1"=="-h" goto :usage
-if "%~1"=="--help" goto :usage
-if not "%~2"=="" goto :usage
-
-if "%~1"=="" (
+if "%TARGET%"=="" (
 	set "TARGET=%DEFAULT_CLIENT%"
-) else (
-	set "TARGET=%~1"
 )
 
 call :ends_with_addons "%TARGET%"
@@ -45,15 +56,15 @@ if not exist "%CLIENT_DIR%\" (
 if not exist "%ADDONS_DIR%\" mkdir "%ADDONS_DIR%"
 
 set "LINKED=0"
+set "SKIPPED=0"
 for /d %%D in ("%REPO_ROOT%\*") do (
 	if exist "%%D\%%~nxD.toc" (
-		call :link_one "%%D" "%ADDONS_DIR%\%%~nxD"
+		call :maybe_copy "%%D" "%ADDONS_DIR%\%%~nxD"
 		if errorlevel 1 exit /b 1
-		set /a LINKED+=1
 	)
 )
 
-if %LINKED%==0 (
+if %LINKED%==0 if %SKIPPED%==0 (
 	echo No addon folders found in %REPO_ROOT% ^(expected FolderName\FolderName.toc^)
 	exit /b 1
 )
@@ -65,12 +76,15 @@ echo its own copy. Fully restart WoW if the game is open.
 exit /b 0
 
 :usage
-echo Usage: %~nx0 [client-folder-or-addons-path]
+echo Usage: %~nx0 [--all] [client-folder-or-addons-path]
 echo Copies each addon in as a real folder. Linked addons load their Lua but the
 echo client never reads back their SavedVariables.
 echo Default: %WOW_ROOT%\%DEFAULT_CLIENT%\Interface\AddOns
+echo By default BagMaster and SplitChat are not copied ^(and are removed from
+echo AddOns if a previous copy is there^). Pass --all to include them.
 echo Examples:
 echo   %~nx0
+echo   %~nx0 --all
 echo   %~nx0 %DEFAULT_CLIENT%
 echo   %~nx0 "%WOW_ROOT%\%DEFAULT_CLIENT%\Interface\AddOns"
 echo   set WOW_ROOT=D:\Games\World of Warcraft
@@ -92,6 +106,29 @@ set "IS_ADDONS=0"
 set "CHECK=%~1"
 if /I "!CHECK:~-15!"=="Interface\AddOns" set "IS_ADDONS=1"
 if /I "!CHECK:~-16!"=="Interface\AddOns\" set "IS_ADDONS=1"
+exit /b 0
+
+:maybe_copy
+set "SRC=%~1"
+set "DEST=%~2"
+set "NAME=%~nx1"
+if "%INCLUDE_SKIPPED%"=="0" (
+	if /I "%NAME%"=="BagMaster" goto :skip_one
+	if /I "%NAME%"=="SplitChat" goto :skip_one
+)
+call :link_one "%SRC%" "%DEST%"
+if errorlevel 1 exit /b 1
+set /a LINKED+=1
+exit /b 0
+
+:skip_one
+if exist "%DEST%" (
+	rmdir /s /q "%DEST%"
+	echo Skipped %NAME% ^(removed from AddOns^). Pass --all to copy.
+) else (
+	echo Skipped %NAME%. Pass --all to copy.
+)
+set /a SKIPPED+=1
 exit /b 0
 
 :link_one

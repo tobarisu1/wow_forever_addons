@@ -1,9 +1,10 @@
 ## Interface: 120105
 ## Title: OldManQuester
-## Notes: Quest UI for ultrawide (and easier reading). Larger dialog and map quest log, tracker panel, bag quest items. /omq to toggle.
+## Notes: Quest UI for ultrawide (and easier reading). Classic character window at the same scale. /omq to toggle.
 ## Author: tobarisu1
 ## Version: 0.1.0
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
 ## SavedVariables: OldManQuesterDB
 
 OldManQuester.lua
+CharacterSheet.lua
