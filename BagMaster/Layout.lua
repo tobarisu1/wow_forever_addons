@@ -4,9 +4,9 @@ ns.COLUMNS = 10
 ns.ITEM_SIZE = 37
 ns.ITEM_SPACING_X = 2
 ns.ITEM_SPACING_Y = 2
-ns.HEADER_HEIGHT = 18
-ns.HEADER_GAP = 3
-ns.SECTION_GAP = 10
+ns.HEADER_HEIGHT = 20
+ns.HEADER_GAP = 2
+ns.SECTION_GAP = 8
 ns.HEADER_NAME_MAX = 18
 
 local headers = {}
@@ -37,37 +37,107 @@ local function GetBagIcon(bagID)
 	return "Interface/Icons/Inv_misc_bag_08"
 end
 
-local function FirstBagIndex()
-	if Enum and Enum.BagIndex and Enum.BagIndex.Backpack then
-		return Enum.BagIndex.Backpack
+local function BagTable()
+	if type(Backend) ~= "table" or type(Backend.GetCurrentCharacter) ~= "function" or type(Backend.GetCharacter) ~= "function" then
+		return nil
 	end
-	return 0
+	local fullName = Backend.GetCurrentCharacter()
+	if type(fullName) ~= "string" then
+		return nil
+	end
+	local row = Backend.GetCharacter(fullName)
+	if type(row) ~= "table" or type(row.bags) ~= "table" then
+		return nil
+	end
+	return row.bags
 end
 
-local function LastBagIndex()
-	return NUM_TOTAL_BAG_FRAMES or NUM_BAG_SLOTS or 4
+local function SlotEntry(slots, slotID)
+	if type(slots) ~= "table" then
+		return nil
+	end
+	local entry = slots[slotID]
+	if type(entry) ~= "table" then
+		entry = slots[tostring(slotID)]
+	end
+	if type(entry) ~= "table" then
+		return nil
+	end
+	return entry
+end
+
+function ns.GetCachedSlot(bagID, slotID)
+	bagID = tonumber(bagID)
+	slotID = tonumber(slotID)
+	if bagID == nil or slotID == nil then
+		return nil
+	end
+	local bags = BagTable()
+	if not bags then
+		return nil
+	end
+	local slots = bags[bagID]
+	if type(slots) ~= "table" then
+		slots = bags[tostring(bagID)]
+	end
+	return SlotEntry(slots, slotID)
 end
 
 local function EachSlot(callback)
-	for bag = FirstBagIndex(), LastBagIndex() do
-		local slots = C_Container.GetContainerNumSlots(bag) or 0
-		for slot = 1, slots do
-			callback(bag, slot)
+	local bags = BagTable()
+	if not bags then
+		return
+	end
+	local bagIDs = {}
+	local seenBag = {}
+	for key in pairs(bags) do
+		local bagID = tonumber(key)
+		if bagID ~= nil and not seenBag[bagID] then
+			seenBag[bagID] = true
+			bagIDs[#bagIDs + 1] = bagID
+		end
+	end
+	table.sort(bagIDs, function(a, b)
+		return a > b
+	end)
+	for i = 1, #bagIDs do
+		local bagID = bagIDs[i]
+		local slots = bags[bagID]
+		if type(slots) ~= "table" then
+			slots = bags[tostring(bagID)]
+		end
+		if type(slots) == "table" then
+			local slotIDs = {}
+			local seenSlot = {}
+			for key in pairs(slots) do
+				local slotID = tonumber(key)
+				if slotID ~= nil and not seenSlot[slotID] then
+					seenSlot[slotID] = true
+					slotIDs[#slotIDs + 1] = slotID
+				end
+			end
+			table.sort(slotIDs, function(a, b)
+				return a > b
+			end)
+			for s = 1, #slotIDs do
+				local slotID = slotIDs[s]
+				callback(bagID, slotID, SlotEntry(slots, slotID) or {})
+			end
 		end
 	end
 end
 
-local function SlotQuality(bag, slot)
-	local info = C_Container.GetContainerItemInfo(bag, slot)
-	if info and info.quality ~= nil then
-		return info.quality
+local function SlotQuality(record)
+	local entry = record and record.entry
+	if type(entry) == "table" and type(entry.quality) == "number" then
+		return entry.quality
 	end
 	return -1
 end
 
 local function SortSlots(a, b)
-	local qa = SlotQuality(a.bag, a.slot)
-	local qb = SlotQuality(b.bag, b.slot)
+	local qa = SlotQuality(a)
+	local qb = SlotQuality(b)
 	if qa ~= qb then
 		return qa > qb
 	end
@@ -80,12 +150,12 @@ end
 local function GroupSlotsByBag()
 	local byBag = {}
 	local bagIDs = {}
-	EachSlot(function(bag, slot)
+	EachSlot(function(bag, slot, entry)
 		if not byBag[bag] then
 			byBag[bag] = {}
 			bagIDs[#bagIDs + 1] = bag
 		end
-		byBag[bag][#byBag[bag] + 1] = { bag = bag, slot = slot }
+		byBag[bag][#byBag[bag] + 1] = { bag = bag, slot = slot, entry = entry }
 	end)
 	table.sort(bagIDs, function(a, b)
 		return a > b
@@ -107,12 +177,12 @@ end
 
 local function GroupSlotsByCategory()
 	local byKey = {}
-	EachSlot(function(bag, slot)
+	EachSlot(function(bag, slot, entry)
 		local key = ns.ClassifySlot(bag, slot)
 		if not byKey[key] then
 			byKey[key] = {}
 		end
-		byKey[key][#byKey[key] + 1] = { bag = bag, slot = slot }
+		byKey[key][#byKey[key] + 1] = { bag = bag, slot = slot, entry = entry }
 	end)
 	local sections = {}
 	for i = 1, #ns.CATEGORIES do
@@ -137,12 +207,84 @@ local function GetSections()
 	return GroupSlotsByCategory()
 end
 
-local function GridHeight(slotCount)
-	if slotCount <= 0 then
-		return 0
+local function MaxContentWidth()
+	return (ns.COLUMNS * ns.ITEM_SIZE) + ((ns.COLUMNS - 1) * ns.ITEM_SPACING_X)
+end
+
+local function ColumnsForCount(count)
+	if count <= 1 then
+		return 1
 	end
-	local rows = math.ceil(slotCount / ns.COLUMNS)
-	return (rows * ns.ITEM_SIZE) + ((rows - 1) * ns.ITEM_SPACING_Y)
+	local side = math.ceil(math.sqrt(count))
+	if side > ns.COLUMNS then
+		return ns.COLUMNS
+	end
+	return side
+end
+
+local function SectionBox(header, section)
+	local count = #section.slots
+	local cols = ColumnsForCount(count)
+	local itemRows = math.ceil(count / cols)
+	local gridWidth = (cols * ns.ITEM_SIZE) + ((cols - 1) * ns.ITEM_SPACING_X)
+	local gridHeight = (itemRows * ns.ITEM_SIZE) + ((itemRows - 1) * ns.ITEM_SPACING_Y)
+	local title = section.title or ""
+	header.text:SetText(title)
+	local titleWidth = math.ceil(header.text:GetStringWidth() or 0)
+	if titleWidth < 1 then
+		titleWidth = #title * 6
+	end
+	titleWidth = titleWidth + 4
+	local maxWidth = MaxContentWidth()
+	if titleWidth > maxWidth then
+		titleWidth = maxWidth
+	end
+	local width = gridWidth
+	if titleWidth > width then
+		width = titleWidth
+	end
+	if width > maxWidth then
+		width = maxWidth
+	end
+	return {
+		section = section,
+		cols = cols,
+		width = width,
+		height = ns.HEADER_HEIGHT + ns.HEADER_GAP + gridHeight,
+	}
+end
+
+local function PackBoxes(boxes)
+	local maxWidth = MaxContentWidth()
+	local gap = ns.SECTION_GAP
+	local packed = {}
+	local row = nil
+	local function PushRow()
+		if row then
+			packed[#packed + 1] = row
+			row = nil
+		end
+	end
+	for i = 1, #boxes do
+		local box = boxes[i]
+		if row and (row.width + gap + box.width) > maxWidth then
+			PushRow()
+		end
+		if not row then
+			row = { width = 0, height = 0, boxes = {} }
+		end
+		if row.width > 0 then
+			row.width = row.width + gap
+		end
+		box.x = row.width
+		row.width = row.width + box.width
+		if box.height > row.height then
+			row.height = box.height
+		end
+		row.boxes[#row.boxes + 1] = box
+	end
+	PushRow()
+	return packed
 end
 
 local function AcquireHeader(parent, index)
@@ -156,12 +298,14 @@ local function AcquireHeader(parent, index)
 	header:SetHeight(ns.HEADER_HEIGHT)
 	header:EnableMouse(false)
 	header.text = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-	header.text:SetPoint("LEFT", 0, 1)
+	header.text:SetPoint("LEFT", 0, 0)
+	header.text:SetPoint("RIGHT", 0, 0)
 	header.text:SetJustifyH("LEFT")
-	header.text:SetTextColor(0.78, 0.7, 0.45)
+	header.text:SetWordWrap(false)
+	header.text:SetTextColor(1, 0.84, 0.45)
 	header.line = header:CreateTexture(nil, "ARTWORK")
-	header.line:SetColorTexture(1, 1, 1, 0.1)
-	header.line:SetHeight(1)
+	header.line:SetTexture("Interface\\Common\\UI-TooltipDivider")
+	header.line:SetHeight(8)
 	header.line:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 0, 0)
 	header.line:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", 0, 0)
 	headers[index] = header
@@ -181,8 +325,20 @@ local function AcquireButton(parent, index)
 		button:Show()
 		return button
 	end
-	button = CreateFrame("ItemButton", "BagMasterItem" .. index, parent, "ContainerFrameItemButtonTemplate")
+	button = CreateFrame("ItemButton", "BagMasterItem" .. index, parent, "ContainerFrameItemButtonTemplate,SecureActionButtonTemplate")
 	button:SetSize(ns.ITEM_SIZE, ns.ITEM_SIZE)
+	button:SetAttribute("useOnKeyDown", false)
+	button:SetScript("PostClick", function(self, mouseButton)
+		if IsModifiedClick() then
+			if ContainerFrameItemButtonMixin and ContainerFrameItemButtonMixin.OnModifiedClick then
+				ContainerFrameItemButtonMixin.OnModifiedClick(self, mouseButton)
+			end
+			return
+		end
+		if mouseButton == "LeftButton" and C_Container and C_Container.PickupContainerItem then
+			C_Container.PickupContainerItem(self:GetBagID(), self:GetID())
+		end
+	end)
 	if button.ItemSlotBackground then
 		button.ItemSlotBackground:Hide()
 	end
@@ -201,10 +357,20 @@ end
 
 local function AssignSlot(button, bag, slot)
 	button.bagID = bag
-	if button.SetBagID and not InCombatLockdown() then
+	if InCombatLockdown() then
+		return
+	end
+	if button.SetBagID then
 		button:SetBagID(bag)
 	end
 	button:SetID(slot)
+	local place = bag .. " " .. slot
+	local noop = ATTRIBUTE_NOOP or ""
+	button:SetAttribute("type2", "item")
+	button:SetAttribute("item2", place)
+	button:SetAttribute("shift-type2", noop)
+	button:SetAttribute("ctrl-type2", noop)
+	button:SetAttribute("alt-type2", noop)
 	button:Show()
 end
 
@@ -217,7 +383,6 @@ local function UpdateButton(button)
 	local locked = info and info.isLocked
 	local quality = info and info.quality
 	local itemLink = info and info.hyperlink
-	local isFiltered = info and info.isFiltered
 	local noValue = info and info.hasNoValue
 	local isBound = info and info.isBound
 	local readable = info and info.isReadable
@@ -261,9 +426,6 @@ local function UpdateButton(button)
 	if button.SetReadable then
 		button:SetReadable(readable)
 	end
-	if button.SetMatchesSearch then
-		button:SetMatchesSearch(not isFiltered)
-	end
 end
 
 function ns.ForEachItemButton(callback)
@@ -275,51 +437,76 @@ end
 local function LayoutSections()
 	local content = ns.GetContent()
 	if not content or not ns.IsEnabled() then
-		ns.HideHeaders()
+		if not InCombatLockdown() then
+			ns.HideHeaders()
+		end
+		return
+	end
+	if InCombatLockdown() then
 		return
 	end
 
 	local sections = GetSections()
 	if #sections == 0 then
+		usedButtons = 0
 		ns.HideHeaders()
+		for i = 1, #buttons do
+			buttons[i]:Hide()
+		end
 		return
 	end
 
-	local columns = ns.COLUMNS
-	local gridWidth = (columns * ns.ITEM_SIZE) + ((columns - 1) * ns.ITEM_SPACING_X)
+	local boxes = {}
+	for i = 1, #sections do
+		local header = AcquireHeader(content, i)
+		boxes[i] = SectionBox(header, sections[i])
+	end
+	local packed = PackBoxes(boxes)
 	local offsetY = 0
+	local contentWidth = 0
 	local headerIndex = 0
 	usedButtons = 0
+	local stepX = ns.ITEM_SIZE + ns.ITEM_SPACING_X
+	local stepY = ns.ITEM_SIZE + ns.ITEM_SPACING_Y
 
-	for i = 1, #sections do
-		local section = sections[i]
-		headerIndex = headerIndex + 1
-		local header = AcquireHeader(content, headerIndex)
-		header:ClearAllPoints()
-		header:SetSize(gridWidth, ns.HEADER_HEIGHT)
-		header:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -offsetY)
-		header.text:SetText(section.title)
-		header:Show()
-		offsetY = offsetY + ns.HEADER_HEIGHT + ns.HEADER_GAP
-
-		local slots = section.slots
-		for s = 1, #slots do
-			usedButtons = usedButtons + 1
-			local button = AcquireButton(content, usedButtons)
-			AssignSlot(button, slots[s].bag, slots[s].slot)
-			UpdateButton(button)
-			local col = (s - 1) % columns
-			local row = math.floor((s - 1) / columns)
-			button:ClearAllPoints()
-			button:SetPoint(
-				"TOPLEFT",
-				content,
-				"TOPLEFT",
-				col * (ns.ITEM_SIZE + ns.ITEM_SPACING_X),
-				-(offsetY + row * (ns.ITEM_SIZE + ns.ITEM_SPACING_Y))
-			)
+	for r = 1, #packed do
+		local band = packed[r]
+		if band.width > contentWidth then
+			contentWidth = band.width
 		end
-		offsetY = offsetY + GridHeight(#slots) + ns.SECTION_GAP
+		for b = 1, #band.boxes do
+			local box = band.boxes[b]
+			headerIndex = headerIndex + 1
+			local header = AcquireHeader(content, headerIndex)
+			header:ClearAllPoints()
+			header:SetSize(box.width, ns.HEADER_HEIGHT)
+			header:SetPoint("TOPLEFT", content, "TOPLEFT", box.x, -offsetY)
+			header.text:SetText(box.section.title)
+			header:Show()
+
+			local slots = box.section.slots
+			local originY = offsetY + ns.HEADER_HEIGHT + ns.HEADER_GAP
+			for s = 1, #slots do
+				usedButtons = usedButtons + 1
+				local button = AcquireButton(content, usedButtons)
+				AssignSlot(button, slots[s].bag, slots[s].slot)
+				UpdateButton(button)
+				local col = (s - 1) % box.cols
+				local itemRow = math.floor((s - 1) / box.cols)
+				button:ClearAllPoints()
+				button:SetPoint(
+					"TOPLEFT",
+					content,
+					"TOPLEFT",
+					box.x + (col * stepX),
+					-(originY + (itemRow * stepY))
+				)
+			end
+		end
+		offsetY = offsetY + band.height
+		if r < #packed then
+			offsetY = offsetY + ns.SECTION_GAP
+		end
 	end
 
 	for i = headerIndex + 1, #headers do
@@ -331,9 +518,13 @@ local function LayoutSections()
 
 	local window = ns.GetWindow()
 	if window then
-		local width = (window.PAD or 10) * 2 + gridWidth
-		local height = (window.TOP_BAR or 54) + offsetY + (window.BOTTOM_BAR or 26)
-		ns.SetWindowSize(width, math.max(height, 220))
+		local pad = window.PAD or 8
+		local width = (pad * 2) + contentWidth
+		if width < 186 then
+			width = 186
+		end
+		local height = (window.TOP_BAR or 36) + offsetY + (window.BOTTOM_BAR or 24)
+		ns.SetWindowSize(width, height)
 	end
 
 	if ns.ApplySearchKeywords then

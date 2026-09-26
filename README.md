@@ -39,7 +39,7 @@ Default WoW root is `/Applications/World of Warcraft`. Forever beta lives in `_c
 
 That creates `/Applications/World of Warcraft/_classic_beta_/Interface/AddOns` if needed and copies each addon folder at the repo root (`FolderName/FolderName.toc`) into it. **BagMaster** and **SplitChat** are skipped by default (and removed from AddOns if a previous copy is there) so Banganator and Chatanator can be used instead. Pass `--all` to include them. The WoW folder name is case-sensitive: `AddOns`, not `Addons`.
 
-The client gets its own copy, so **re-run the script after editing** and fully restart WoW. Copying rather than symlinking is deliberate: a symlinked addon folder loads its Lua normally, but the client never reads its SavedVariables back, so anything the addon saves silently resets on the next login.
+The client gets its own copy, so **re-run the script after editing** and fully restart WoW when the change is a new file or TOC. Lua-only edits need `/reload`. SavedVariables persist across `/reload` and relog.
 
 Optional overrides:
 

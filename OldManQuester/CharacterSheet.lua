@@ -158,11 +158,12 @@ local function Buffed(base, pos, neg)
 	return color .. total .. "|r", detail .. ")"
 end
 
--- Right edge of a right-hand stat box, in the old sheet's coordinates.
--- The digits share this x so they sit in the fill, off the box's right rim.
-local RIGHT_NUMBER_X = 214
+-- Same inset as the strength column: those digits end 5px inside the
+-- 115-wide box. The melee box starts at x=115, so its digits end at 225.
+-- One anchor only, and no explicit size, so the font stays GameFontHighlightSmall.
+local RIGHT_NUMBER_X = 225
 
-local function StatRow(parent, label, anchor, relPoint, x, y, valueX)
+local function StatRow(parent, label, anchor, relPoint, x, y, valueX, absX)
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetSize(U(104), U(13))
 	row:SetPoint("TOPLEFT", anchor, relPoint, U(x), U(y))
@@ -173,9 +174,7 @@ local function StatRow(parent, label, anchor, relPoint, x, y, valueX)
 	row.value:SetJustifyH("RIGHT")
 	row.value:SetWordWrap(false)
 	if valueX then
-		row.value:SetPoint("RIGHT", parent, "TOPLEFT", U(valueX), 0)
-		row.value:SetPoint("TOP", row, "TOP", 0, 0)
-		row.value:SetPoint("BOTTOM", row, "BOTTOM", 0, 0)
+		row.value:SetPoint("RIGHT", row, "RIGHT", U(valueX - (absX + 104)), 0)
 	else
 		row.value:SetPoint("RIGHT", row, "RIGHT", 0, 0)
 	end
@@ -516,12 +515,12 @@ local function Build()
 		prev = row
 	end
 	sheet.armor = StatRow(attrs, ARMOR or "Armor", prev, "BOTTOMLEFT", 0, 0)
-	sheet.attack = StatRow(attrs, MELEE_ATTACK or "Melee Attack", attrs, "TOPLEFT", 122, -2, RIGHT_NUMBER_X)
-	sheet.attackPower = StatRow(attrs, ATTACK_POWER or "Power", sheet.attack, "BOTTOMLEFT", 5, 1, RIGHT_NUMBER_X)
-	sheet.damage = StatRow(attrs, DAMAGE or "Damage", sheet.attackPower, "BOTTOMLEFT", 0, 1, RIGHT_NUMBER_X)
-	sheet.rangedAttack = StatRow(attrs, RANGED_ATTACK or "Ranged Attack", sheet.damage, "BOTTOMLEFT", -5, -6, RIGHT_NUMBER_X)
-	sheet.rangedPower = StatRow(attrs, ATTACK_POWER or "Power", sheet.rangedAttack, "BOTTOMLEFT", 5, 1, RIGHT_NUMBER_X)
-	sheet.rangedDamage = StatRow(attrs, DAMAGE or "Damage", sheet.rangedPower, "BOTTOMLEFT", 0, 1, RIGHT_NUMBER_X)
+	sheet.attack = StatRow(attrs, MELEE_ATTACK or "Melee Attack", attrs, "TOPLEFT", 122, -2, RIGHT_NUMBER_X, 122)
+	sheet.attackPower = StatRow(attrs, ATTACK_POWER or "Power", sheet.attack, "BOTTOMLEFT", 5, 1, RIGHT_NUMBER_X, 127)
+	sheet.damage = StatRow(attrs, DAMAGE or "Damage", sheet.attackPower, "BOTTOMLEFT", 0, 1, RIGHT_NUMBER_X, 127)
+	sheet.rangedAttack = StatRow(attrs, RANGED_ATTACK or "Ranged Attack", sheet.damage, "BOTTOMLEFT", -5, -6, RIGHT_NUMBER_X, 122)
+	sheet.rangedPower = StatRow(attrs, ATTACK_POWER or "Power", sheet.rangedAttack, "BOTTOMLEFT", 5, 1, RIGHT_NUMBER_X, 127)
+	sheet.rangedDamage = StatRow(attrs, DAMAGE or "Damage", sheet.rangedPower, "BOTTOMLEFT", 0, 1, RIGHT_NUMBER_X, 127)
 
 	if type(UnitResistance) == "function" then
 		local resFrame = CreateFrame("Frame", nil, doll)

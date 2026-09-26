@@ -4,11 +4,13 @@ local window
 local searchBox
 local moneyText
 local hookedToggles = false
+local cacheHooked = false
 local originals = {}
 
-local TOP_BAR = 36
-local BOTTOM_BAR = 24
-local PAD = 8
+local TOP_BAR = 42
+local BOTTOM_BAR = 28
+local PAD = 16
+local FRAME_SCALE = 1.4
 
 function ns.GetWindow()
 	return window
@@ -109,6 +111,22 @@ local function WrapToggle(name, handler)
 	end
 end
 
+local function HookCache()
+	if cacheHooked then
+		return
+	end
+	if type(Backend) ~= "table" or type(Backend.RegisterCallback) ~= "function" then
+		return
+	end
+	cacheHooked = true
+	Backend.RegisterCallback("BagCacheUpdate", function()
+		if not ns.IsEnabled() or not ns.IsWindowShown() then
+			return
+		end
+		ns.RefreshBags()
+	end)
+end
+
 local function HookBagToggles()
 	if hookedToggles then
 		return
@@ -204,6 +222,7 @@ end
 function ns.InitWindow()
 	if window then
 		HookBagToggles()
+		HookCache()
 		return true
 	end
 
@@ -214,15 +233,19 @@ function ns.InitWindow()
 	window:SetMovable(true)
 	window:EnableMouse(true)
 	window:SetSize(420, 500)
+	window:SetScale(FRAME_SCALE)
 	window:Hide()
 	window:SetBackdrop({
-		bgFile = "Interface\\Buttons\\WHITE8X8",
-		edgeFile = "Interface\\Buttons\\WHITE8X8",
-		edgeSize = 1,
-		insets = { left = 1, right = 1, top = 1, bottom = 1 },
+		bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Gold-Border",
+		tile = true,
+		tileEdge = true,
+		tileSize = 32,
+		edgeSize = 32,
+		insets = { left = 11, right = 12, top = 12, bottom = 11 },
 	})
-	window:SetBackdropColor(0.08, 0.08, 0.09, 0.96)
-	window:SetBackdropBorderColor(0.15, 0.15, 0.16, 1)
+	window:SetBackdropColor(1, 1, 1, 1)
+	window:SetBackdropBorderColor(1, 1, 1, 1)
 	window:RegisterForDrag("LeftButton")
 	window:SetScript("OnDragStart", function(self)
 		self:StartMoving()
@@ -234,19 +257,15 @@ function ns.InitWindow()
 	window:SetScript("OnHide", SavePosition)
 	tinsert(UISpecialFrames, "BagMasterFrame")
 
-	local close = CreateFrame("Button", nil, window)
-	close:SetSize(18, 18)
-	close:SetPoint("TOPRIGHT", -4, -8)
-	close:SetNormalFontObject("GameFontHighlightSmall")
-	close:SetHighlightFontObject("GameFontNormalSmall")
-	close:SetText("x")
+	local close = CreateFrame("Button", nil, window, "UIPanelCloseButtonNoScripts")
+	close:SetPoint("TOPRIGHT", 2, 2)
 	close:SetScript("OnClick", function()
 		ns.HideWindow()
 	end)
 
 	searchBox = CreateFrame("EditBox", "BagMasterSearchBox", window, "SearchBoxTemplate")
 	searchBox:SetHeight(20)
-	searchBox:SetPoint("TOPLEFT", PAD, -8)
+	searchBox:SetPoint("TOPLEFT", PAD, -14)
 	searchBox:SetPoint("TOPRIGHT", close, "TOPLEFT", -4, 0)
 	searchBox:SetAutoFocus(false)
 	searchBox:SetMaxLetters(40)
@@ -264,7 +283,7 @@ function ns.InitWindow()
 	window.searchBox = searchBox
 
 	moneyText = window:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	moneyText:SetPoint("BOTTOMRIGHT", -PAD, 7)
+	moneyText:SetPoint("BOTTOMRIGHT", -PAD, 14)
 	moneyText:SetJustifyH("RIGHT")
 	window.moneyText = moneyText
 
@@ -284,6 +303,7 @@ function ns.InitWindow()
 
 	RestorePosition()
 	HookBagToggles()
+	HookCache()
 
 	window:SetScript("OnEvent", function(_, event)
 		if not ns.IsEnabled() then
@@ -297,7 +317,6 @@ function ns.InitWindow()
 			ns.RefreshBags()
 		end
 	end)
-	window:RegisterEvent("BAG_UPDATE_DELAYED")
 	window:RegisterEvent("BAG_UPDATE_COOLDOWN")
 	window:RegisterEvent("ITEM_LOCK_CHANGED")
 	window:RegisterEvent("PLAYER_MONEY")

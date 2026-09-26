@@ -244,12 +244,16 @@ local function SnapshotTargets()
 	SnapshotSize(QuestFrame)
 	SnapshotSize(GossipFrame)
 	SnapshotSize(CharacterFrame)
+	SnapshotSize(MailFrame)
+	SnapshotSize(OpenMailFrame)
 end
 
 local function ApplyFrameSizes()
 	SnapshotTargets()
 	ApplyDialogScale(QuestFrame)
 	ApplyDialogScale(GossipFrame)
+	ApplyDialogScale(MailFrame)
+	ApplyDialogScale(OpenMailFrame)
 	if ns.ApplyCharacterWindow then
 		ns.ApplyCharacterWindow()
 	end
@@ -560,6 +564,22 @@ local function InstallHooks()
 			return false
 		end
 		GossipFrame:HookScript("OnShow", OnDialogShow)
+		return true
+	end)
+
+	HookOnce("mailFrameShow", function()
+		if not MailFrame then
+			return false
+		end
+		MailFrame:HookScript("OnShow", OnDialogShow)
+		return true
+	end)
+
+	HookOnce("openMailFrameShow", function()
+		if not OpenMailFrame then
+			return false
+		end
+		OpenMailFrame:HookScript("OnShow", OnDialogShow)
 		return true
 	end)
 

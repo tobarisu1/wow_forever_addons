@@ -90,22 +90,19 @@ function ns.SlotIsQuestItem(bag, slot)
 end
 
 function ns.ClassifySlot(bag, slot)
-	if not bag or not slot or not C_Container or not C_Container.GetContainerItemInfo then
+	local entry = ns.GetCachedSlot and ns.GetCachedSlot(bag, slot)
+	if type(entry) ~= "table" or type(entry.itemID) ~= "number" then
 		return "empty"
 	end
-	local info = C_Container.GetContainerItemInfo(bag, slot)
-	if not info or not info.itemID then
-		return "empty"
-	end
-	if ns.SlotIsQuestItem(bag, slot) then
+	if entry.isQuestItem then
 		return "quest"
 	end
-	if info.quality == QUALITY_POOR then
+	if entry.quality == QUALITY_POOR then
 		return "junk"
 	end
-	local classID = info.classID
-	if not classID and C_Item and C_Item.GetItemInfoInstant then
-		local _, _, _, _, _, instantClass = C_Item.GetItemInfoInstant(info.itemID)
+	local classID
+	if C_Item and C_Item.GetItemInfoInstant then
+		local _, _, _, _, _, instantClass = C_Item.GetItemInfoInstant(entry.itemID)
 		classID = instantClass
 	end
 	return CLASS_TO_CATEGORY[classID] or "other"
@@ -241,10 +238,47 @@ function ns.SetItemsEnabled(enabled)
 	end
 end
 
+local function PlainString(value)
+	if value == nil then
+		return nil
+	end
+	if issecretvalue then
+		local ok, secret = pcall(issecretvalue, value)
+		if ok and secret then
+			return nil
+		end
+	end
+	if type(value) ~= "string" or value == "" then
+		return nil
+	end
+	return value
+end
+
+local function SearchText(bag, slot)
+	local parts = {}
+	local entry = ns.GetCachedSlot and ns.GetCachedSlot(bag, slot)
+	local link = entry and PlainString(entry.itemLink)
+	if link then
+		parts[#parts + 1] = link
+	end
+	if C_Container and C_Container.GetContainerItemInfo then
+		local info = C_Container.GetContainerItemInfo(bag, slot)
+		local name = info and PlainString(info.itemName)
+		if name then
+			parts[#parts + 1] = name
+		end
+	end
+	if #parts == 0 then
+		return ""
+	end
+	return string.lower(table.concat(parts, " "))
+end
+
 function ns.ApplySearchKeywords(query)
 	if type(query) ~= "string" then
 		query = ns.GetSearchQuery and ns.GetSearchQuery() or ""
 	end
+	query = string.lower(string.match(query, "^%s*(.-)%s*$") or "")
 	local keyword = KEYWORDS[query]
 	if not ns.ForEachItemButton then
 		return
@@ -253,16 +287,20 @@ function ns.ApplySearchKeywords(query)
 		if not button.SetMatchesSearch then
 			return
 		end
-		local bag = button.GetBagID and button:GetBagID()
-		local slot = button.GetID and button:GetID()
 		if query == "" then
 			button:SetMatchesSearch(true)
 			return
 		end
-		local info = C_Container.GetContainerItemInfo(bag, slot)
-		local blizzardMatch = not (info and info.isFiltered)
+		local bag = button.GetBagID and button:GetBagID()
+		local slot = button.GetID and button:GetID()
 		local matchesKeyword = keyword and ns.ClassifySlot(bag, slot) == keyword
-		button:SetMatchesSearch(blizzardMatch or matchesKeyword)
+		local haystack = SearchText(bag, slot)
+		local matchesName = haystack ~= "" and string.find(haystack, query, 1, true)
+		local matches = false
+		if matchesKeyword or matchesName then
+			matches = true
+		end
+		button:SetMatchesSearch(matches)
 	end)
 end
 

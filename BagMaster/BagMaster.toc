@@ -5,6 +5,7 @@
 ## Version: 0.1.0
 ## IconTexture: Interface\Icons\INV_Misc_Bag_08
 ## SavedVariables: BagMasterDB
+## Dependencies: Backend
 
 BagMaster.lua
 Items.lua

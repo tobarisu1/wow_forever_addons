@@ -2,7 +2,7 @@
 
 Personal raid DKP ledger for Forever. Not built yet. Iterate in-game; this doc is the starting contract.
 
-Forever gameplay is vanilla-era (level cap 60). The client UI is Mainline 12.1.5 (`## Interface: 120105`). No Ace3. Slash commands, not an options panel. Match GatherMemory: one account SavedVariables file, copy via `./scripts/link-addon.sh`, never symlink.
+Forever gameplay is vanilla-era (level cap 60). The client UI is Mainline 12.1.5 (`## Interface: 120105`). No Ace3. Slash commands, not an options panel. Match GatherMemory: one account SavedVariables file, copy via `./scripts/link-addon.sh`. SavedVariables persist across `/reload` and relog.
 
 ## Goal
 
@@ -127,5 +127,5 @@ Two officers running the addon means two files. Pick a source of truth.
 1. `/eventtrace` during a Forever raid boss kill
 2. Roster names survive secret-value checks
 3. Each award row has name, class, bossName, dkp, and `killedAt`; spec may be nil
-4. SavedVariables round-trip after `/reload` (copy script, never symlink)
+4. SavedVariables round-trip after `/reload`
 5. JSON field is valid after a full raid night
