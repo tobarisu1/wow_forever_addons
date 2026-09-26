@@ -246,8 +246,8 @@ local function SameMap(a, b)
 	return ok and same
 end
 
--- Nested SavedVariables keys come back unreadable on this client, so the file
--- stores one string (same as TobarisuMapDB.point). Pins are served from cache.
+-- Pins are served from this cache and written to SavedVariables.
+-- Nested tables round-trip again; this file still stores the existing string layout.
 local cache = {}
 
 local function CacheKey(kind, map, xy)

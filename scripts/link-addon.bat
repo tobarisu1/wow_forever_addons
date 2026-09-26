@@ -77,8 +77,8 @@ exit /b 0
 
 :usage
 echo Usage: %~nx0 [--all] [client-folder-or-addons-path]
-echo Copies each addon in as a real folder. Linked addons load their Lua but the
-echo client never reads back their SavedVariables.
+echo Copies each addon in as a real folder. Re-run after editing.
+echo SavedVariables persist across /reload and relog.
 echo Default: %WOW_ROOT%\%DEFAULT_CLIENT%\Interface\AddOns
 echo By default BagMaster and SplitChat are not copied ^(and are removed from
 echo AddOns if a previous copy is there^). Pass --all to include them.
@@ -135,9 +135,8 @@ exit /b 0
 set "SRC=%~1"
 set "DEST=%~2"
 set "NAME=%~nx1"
-rem Remove a junction or symlink left by an older version of this script. A linked
-rem addon folder loads its Lua normally but the client does not read its
-rem SavedVariables back, so saved data silently resets on every login.
+rem Remove a junction or symlink left by an older version of this script so the
+rem client folder is a real copy.
 for %%L in ("%DEST%") do if exist "%DEST%" (
 	dir /al /b "%DEST%\.." 2>nul | findstr /I /X "%NAME%" >nul && rmdir "%DEST%" 2>nul
 )

@@ -2,7 +2,7 @@
 
 Personal loot log for Forever. Not built yet. Same idea as GatherMemory: **your** drops, not a community table.
 
-Forever gameplay is vanilla-era (level cap 60). The client UI is Mainline 12.1.5 (`## Interface: 120105`). No Ace3. Slash commands, not an options panel. Copy via `./scripts/link-addon.sh`. Never symlink, or SavedVariables reset every login.
+Forever gameplay is vanilla-era (level cap 60). The client UI is Mainline 12.1.5 (`## Interface: 120105`). No Ace3. Slash commands, not an options panel. Copy via `./scripts/link-addon.sh`. SavedVariables persist across `/reload` and relog.
 
 ## Goal
 

@@ -3,6 +3,7 @@ local _, ns = ...
 local chromeHidden = false
 local header
 local mover
+local mapBorder
 
 local CHROME_GLOBALS = {
 	"MinimapBackdrop",
@@ -736,6 +737,31 @@ function ns.SetLocked(locked)
 	ns.UpdateMover()
 end
 
+local function ApplyMapBorder(cluster)
+	if not cluster then
+		return
+	end
+	if not mapBorder then
+		mapBorder = CreateFrame("Frame", nil, cluster, "BackdropTemplate")
+		mapBorder:EnableMouse(false)
+		mapBorder:SetBackdrop({
+			edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+			edgeSize = 12,
+		})
+		mapBorder:SetBackdropBorderColor(1, 0.86, 0.55, 1)
+	end
+	mapBorder:SetFrameStrata(cluster:GetFrameStrata() or "LOW")
+	local level = cluster:GetFrameLevel() or 0
+	if Minimap and Minimap.GetFrameLevel then
+		level = math.max(0, Minimap:GetFrameLevel() - 1)
+	end
+	mapBorder:SetFrameLevel(level)
+	mapBorder:ClearAllPoints()
+	mapBorder:SetPoint("TOPLEFT", cluster, "TOPLEFT", -4, 4)
+	mapBorder:SetPoint("BOTTOMRIGHT", cluster, "BOTTOMRIGHT", 4, -4)
+	mapBorder:Show()
+end
+
 function ns.InitLayout()
 	local cluster = ns.GetCluster()
 	if not cluster then
@@ -787,6 +813,7 @@ function ns.InitLayout()
 
 	ns.ApplyPosition()
 	ns.ApplySize()
+	ApplyMapBorder(cluster)
 	ns.UpdateHeader()
 	ns.ApplyVisibility()
 	ns.UpdateMover()

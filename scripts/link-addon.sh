@@ -8,8 +8,8 @@ INCLUDE_SKIPPED=0
 
 usage() {
 	echo "Usage: $0 [--all] [client-folder-or-addons-path]"
-	echo "Copies each addon into the client as a real folder. Symlinked addons load"
-	echo "their Lua but the client never reads back their SavedVariables."
+	echo "Copies each addon into the client as a real folder. Re-run after editing."
+	echo "SavedVariables persist across /reload and relog."
 	echo "Default: $WOW_ROOT/$DEFAULT_CLIENT/Interface/AddOns"
 	echo "By default BagMaster and SplitChat are not copied (and are removed from"
 	echo "AddOns if a previous copy is there). Pass --all to include them."
@@ -109,9 +109,8 @@ for addon_dir in "$REPO_ROOT"/*/; do
 		continue
 	fi
 
-	# Replace any symlink left by an older version of this script. A symlinked addon
-	# folder loads its Lua normally but the client does not read its SavedVariables
-	# back, so saved data silently resets on every login.
+	# Replace any symlink left by an older version of this script so the client
+	# folder is a real copy.
 	if [[ -L "$dest" ]]; then
 		rm -f "$dest"
 	fi

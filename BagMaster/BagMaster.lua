@@ -131,15 +131,50 @@ local function HandleSlash(msg)
 	PrintMenu()
 end
 
+local started = false
+local waitingReady = false
+local warnedMissing = false
+
+local function BackendLoaded()
+	return type(Backend) == "table" and type(Backend.IsReady) == "function" and type(Backend.RegisterCallback) == "function"
+end
+
 local function Start()
+	if started then
+		return true
+	end
 	ns.InitDB()
 	if BagMasterDB.highlightItems == nil then
 		BagMasterDB.highlightItems = true
 	end
+	if not BackendLoaded() then
+		if not warnedMissing then
+			warnedMissing = true
+			Print("Backend is not loaded. Enable Backend, then /reload.")
+		end
+		return false
+	end
+	if not Backend.IsReady() then
+		if not waitingReady then
+			waitingReady = true
+			Backend.RegisterCallback("Ready", function()
+				waitingReady = false
+				Start()
+			end)
+		end
+		return false
+	end
 	local itemsReady = ns.InitItems()
 	ns.InitWindow()
 	ns.InitLayout()
-	return itemsReady
+	if ns.IsWindowShown and ns.IsWindowShown() then
+		ns.RefreshBags()
+	end
+	if not itemsReady then
+		return false
+	end
+	started = true
+	return true
 end
 
 local frame = CreateFrame("Frame")
