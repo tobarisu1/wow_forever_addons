@@ -1,10 +1,11 @@
 ## Interface: 120105
-## Title: Backend
+## Title: BackendMaster
 ## Notes: Shared bag and bank cache for other addons. /be for status.
 ## Author: tobarisu1
 ## Version: 0.1.0
 ## IconTexture: Interface\Icons\INV_Misc_Bag_07
-## SavedVariables: BackendDB
+## SavedVariables: BackendMasterDB
 
-Backend.lua
+BackendMaster.lua
 Bags.lua
+Items.lua

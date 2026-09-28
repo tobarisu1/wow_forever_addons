@@ -1,0 +1,10 @@
+## Interface: 120105
+## Title: TooltipMaster
+## Notes: Extra item tooltip lines for junk, profession use, and item kind. /tm to toggle.
+## Author: tobarisu1
+## Version: 0.1.0
+## IconTexture: Interface\Icons\INV_Misc_Note_01
+## SavedVariables: TooltipMasterDB
+## Dependencies: BackendMaster
+
+TooltipMaster.lua

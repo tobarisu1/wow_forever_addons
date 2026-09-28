@@ -1,10 +1,10 @@
 local addonName, ns = ...
 
 ns.addonName = addonName
-ns.PREFIX = "|cffffcc66Backend|r"
+ns.PREFIX = "|cffffcc66BackendMaster|r"
 
 -- Public table other addons call. Frozen after the methods below exist.
-Backend = {}
+BackendMaster = {}
 
 local ready = false
 local callbacks = {
@@ -58,14 +58,14 @@ end
 ns.Fire = Fire
 
 function ns.InitDB()
-	if type(BackendDB) ~= "table" then
-		BackendDB = {}
+	if type(BackendMasterDB) ~= "table" then
+		BackendMasterDB = {}
 	end
-	if type(BackendDB.version) ~= "number" then
-		BackendDB.version = 1
+	if type(BackendMasterDB.version) ~= "number" then
+		BackendMasterDB.version = 1
 	end
-	if type(BackendDB.characters) ~= "table" then
-		BackendDB.characters = {}
+	if type(BackendMasterDB.characters) ~= "table" then
+		BackendMasterDB.characters = {}
 	end
 end
 
@@ -161,7 +161,7 @@ local function EnsureCharacter()
 	end
 	local realm = RealmKey()
 	local fullName = name .. "-" .. realm
-	local characters = BackendDB.characters
+	local characters = BackendMasterDB.characters
 	local row = characters[fullName]
 	if type(row) ~= "table" then
 		row = {
@@ -209,37 +209,37 @@ local function EnsureCharacter()
 end
 
 function ns.CurrentRow()
-	if not ns.currentCharacter or type(BackendDB) ~= "table" or type(BackendDB.characters) ~= "table" then
+	if not ns.currentCharacter or type(BackendMasterDB) ~= "table" or type(BackendMasterDB.characters) ~= "table" then
 		return nil
 	end
-	return BackendDB.characters[ns.currentCharacter]
+	return BackendMasterDB.characters[ns.currentCharacter]
 end
 
-function Backend.IsReady()
+function BackendMaster.IsReady()
 	return ready
 end
 
-function Backend.GetCurrentCharacter()
+function BackendMaster.GetCurrentCharacter()
 	return ns.currentCharacter
 end
 
-function Backend.GetCharacter(fullName)
-	if type(fullName) ~= "string" or type(BackendDB) ~= "table" or type(BackendDB.characters) ~= "table" then
+function BackendMaster.GetCharacter(fullName)
+	if type(fullName) ~= "string" or type(BackendMasterDB) ~= "table" or type(BackendMasterDB.characters) ~= "table" then
 		return nil
 	end
-	local row = BackendDB.characters[fullName]
+	local row = BackendMasterDB.characters[fullName]
 	if type(row) ~= "table" then
 		return nil
 	end
 	return row
 end
 
-function Backend.GetAllCharacters()
+function BackendMaster.GetAllCharacters()
 	local names = {}
-	if type(BackendDB) ~= "table" or type(BackendDB.characters) ~= "table" then
+	if type(BackendMasterDB) ~= "table" or type(BackendMasterDB.characters) ~= "table" then
 		return names
 	end
-	for fullName in pairs(BackendDB.characters) do
+	for fullName in pairs(BackendMasterDB.characters) do
 		if type(fullName) == "string" then
 			names[#names + 1] = fullName
 		end
@@ -248,14 +248,14 @@ function Backend.GetAllCharacters()
 	return names
 end
 
-function Backend.IsBagEventPending()
+function BackendMaster.IsBagEventPending()
 	if ns.BagEventPending then
 		return ns.BagEventPending()
 	end
 	return false
 end
 
-function Backend.RegisterCallback(event, callback)
+function BackendMaster.RegisterCallback(event, callback)
 	local list = callbacks[event]
 	if not list or type(callback) ~= "function" then
 		return
@@ -297,9 +297,9 @@ local function PrintStatus()
 		return
 	end
 	local fullName = ns.currentCharacter or "unknown"
-	local row = Backend.GetCharacter(fullName)
+	local row = BackendMaster.GetCharacter(fullName)
 	local state = "idle"
-	if Backend.IsBagEventPending() then
+	if BackendMaster.IsBagEventPending() then
 		state = "updating"
 	end
 	local bagItems = 0
@@ -312,7 +312,7 @@ local function PrintStatus()
 	end
 	Print(fullName)
 	print("Cache: " .. state .. "  bag items " .. bagItems .. "  bank items " .. bankItems)
-	print("Characters: " .. #Backend.GetAllCharacters() .. "  money " .. MoneyText(money))
+	print("Characters: " .. #BackendMaster.GetAllCharacters() .. "  money " .. MoneyText(money))
 end
 
 local function PrintMenu()
@@ -359,10 +359,6 @@ frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_MONEY")
 
-SLASH_BACKEND1 = "/be"
-SLASH_BACKEND2 = "/backend"
-SlashCmdList["BACKEND"] = HandleSlash
-
-if table.freeze then
-	pcall(table.freeze, Backend)
-end
+SLASH_BACKENDMASTER1 = "/be"
+SLASH_BACKENDMASTER2 = "/backendmaster"
+SlashCmdList["BACKENDMASTER"] = HandleSlash

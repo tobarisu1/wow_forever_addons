@@ -1,0 +1,14 @@
+## Interface: 120105
+## Title: PhatLewtDb
+## Notes: Personal loot log. Always saving. /pld to open.
+## Author: tobarisu1
+## Version: 0.1.0
+## IconTexture: Interface\Icons\INV_Misc_Coin_01
+## SavedVariables: PhatLewtDbDB
+## LoadSavedVariablesFirst: 1
+## Dependencies: BackendMaster
+## OptionalDeps: TobarisuMap
+
+PhatLewtDb.lua
+Record.lua
+Window.lua
