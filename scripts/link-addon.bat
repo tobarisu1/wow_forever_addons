@@ -64,6 +64,12 @@ for /d %%D in ("%REPO_ROOT%\*") do (
 	)
 )
 
+rem Renamed to BackendMaster. Drop the old client folder so both do not load.
+if exist "%ADDONS_DIR%\Backend\" (
+	rmdir /s /q "%ADDONS_DIR%\Backend"
+	echo Removed old Backend addon ^(now BackendMaster^).
+)
+
 if %LINKED%==0 if %SKIPPED%==0 (
 	echo No addon folders found in %REPO_ROOT% ^(expected FolderName\FolderName.toc^)
 	exit /b 1

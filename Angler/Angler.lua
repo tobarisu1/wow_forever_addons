@@ -3,8 +3,10 @@ local PREFIX = "|cffffcc66Angler|r"
 local MIN_DOUBLE_CLICK = 0.05
 local MAX_DOUBLE_CLICK = 0.4
 local IGNORE_LURE_SECONDS = 300
+local FRAME_SCALE = 1.4
 local LURE_BTN_SIZE = 28
 local LURE_PADDING = 5
+local FRAME_PAD = 20
 local BG_SOUND_CVAR = "Sound_EnableSoundWhenGameIsInBG"
 
 local FISHING_SPELLS = { 7620, 131474 }
@@ -129,15 +131,21 @@ end
 local lureMenu = CreateFrame("Frame", "AnglerLureMenu", UIParent, "BackdropTemplate")
 lureMenu:SetFrameStrata("DIALOG")
 lureMenu:SetToplevel(true)
+lureMenu:SetClampedToScreen(true)
+lureMenu:EnableMouse(true)
+lureMenu:SetScale(FRAME_SCALE)
 lureMenu:Hide()
 lureMenu:SetBackdrop({
-	bgFile = "Interface\\Buttons\\WHITE8X8",
-	edgeFile = "Interface\\Buttons\\WHITE8X8",
-	edgeSize = 1,
-	insets = { left = 1, right = 1, top = 1, bottom = 1 },
+	bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+	edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Gold-Border",
+	tile = true,
+	tileEdge = true,
+	tileSize = 32,
+	edgeSize = 32,
+	insets = { left = 11, right = 12, top = 12, bottom = 11 },
 })
-lureMenu:SetBackdropColor(0.08, 0.08, 0.09, 0.96)
-lureMenu:SetBackdropBorderColor(0.15, 0.15, 0.16, 1)
+lureMenu:SetBackdropColor(1, 1, 1, 1)
+lureMenu:SetBackdropBorderColor(1, 1, 1, 1)
 tinsert(UISpecialFrames, "AnglerLureMenu")
 
 local function HideLureMenu()
@@ -147,10 +155,11 @@ local function HideLureMenu()
 end
 
 local lureMenuCloseBtn = CreateFrame("Button", nil, lureMenu)
-lureMenuCloseBtn:SetSize(20, 20)
+lureMenuCloseBtn:SetSize(24, 24)
 lureMenuCloseBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
 lureMenuCloseBtn:SetPushedTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Down")
 lureMenuCloseBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
+lureMenuCloseBtn:SetPoint("TOPRIGHT", 2, 2)
 lureMenuCloseBtn:SetScript("OnClick", function()
 	ignoreLureUntil = GetTime() + IGNORE_LURE_SECONDS
 	HideLureMenu()
@@ -170,19 +179,15 @@ local function MakeLureButton(index)
 	btn:SetSize(LURE_BTN_SIZE, LURE_BTN_SIZE)
 	btn:RegisterForClicks("AnyUp", "AnyDown")
 
-	local tex = btn:CreateTexture(nil, "ARTWORK")
-	tex:SetAllPoints()
+	local tex = btn:CreateTexture(nil, "BACKGROUND")
+	tex:SetPoint("TOPLEFT", 2, -2)
+	tex:SetPoint("BOTTOMRIGHT", -2, 2)
 	tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 	btn.icon = tex
 
-	local mask = btn:CreateMaskTexture()
-	mask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-	mask:SetAllPoints(btn.icon)
-	btn.icon:AddMaskTexture(mask)
-
-	btn:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
-	btn:GetHighlightTexture():SetBlendMode("ADD")
+	btn:SetNormalTexture("Interface\\Buttons\\UI-Quickslot2")
 	btn:SetPushedTexture("Interface\\Buttons\\UI-Quickslot-Depress")
+	btn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
 
 	local font = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
 	font:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -2, 2)
@@ -215,11 +220,8 @@ local function UpdateLureMenu(availableLures)
 		return false
 	end
 
-	local width = (#availableLures * LURE_BTN_SIZE) + ((#availableLures + 1) * LURE_PADDING)
-	lureMenu:SetSize(width, LURE_BTN_SIZE + 2 * LURE_PADDING)
-
-	lureMenuCloseBtn:ClearAllPoints()
-	lureMenuCloseBtn:SetPoint("CENTER", lureMenu, "TOPRIGHT", 0, 0)
+	local width = (#availableLures * LURE_BTN_SIZE) + ((#availableLures - 1) * LURE_PADDING) + (FRAME_PAD * 2)
+	lureMenu:SetSize(width, LURE_BTN_SIZE + (FRAME_PAD * 2))
 
 	for i = 1, #availableLures do
 		local lure = availableLures[i]
@@ -231,7 +233,7 @@ local function UpdateLureMenu(availableLures)
 
 		btn.itemID = lure.id
 		btn:ClearAllPoints()
-		btn:SetPoint("LEFT", lureMenu, "LEFT", LURE_PADDING + (i - 1) * (LURE_BTN_SIZE + LURE_PADDING), 0)
+		btn:SetPoint("LEFT", lureMenu, "LEFT", FRAME_PAD + (i - 1) * (LURE_BTN_SIZE + LURE_PADDING), 0)
 		btn.icon:SetTexture(C_Item.GetItemIconByID(lure.id))
 		btn:SetAttribute("type", "macro")
 		btn:SetAttribute("macrotext", "/use item:" .. lure.id .. "\n/use " .. INVSLOT_MAINHAND)
@@ -264,7 +266,8 @@ local function ShowLureMenu()
 		return
 	end
 	local x, y = GetCursorPosition()
-	local scale = UIParent:GetEffectiveScale()
+	-- Offsets are in this frame's scale (FRAME_SCALE), not UIParent's.
+	local scale = lureMenu:GetEffectiveScale()
 	lureMenu:ClearAllPoints()
 	lureMenu:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", (x / scale) + 40, (y / scale) - 20)
 	lureMenu:Show()

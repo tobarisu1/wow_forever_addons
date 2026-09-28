@@ -2,11 +2,11 @@ local _, ns = ...
 
 ns.COLUMNS = 10
 ns.ITEM_SIZE = 37
-ns.ITEM_SPACING_X = 2
-ns.ITEM_SPACING_Y = 2
-ns.HEADER_HEIGHT = 20
-ns.HEADER_GAP = 2
-ns.SECTION_GAP = 8
+ns.ITEM_SPACING_X = 1
+ns.ITEM_SPACING_Y = 1
+ns.HEADER_HEIGHT = 14
+ns.HEADER_GAP = 0
+ns.SECTION_GAP = 2
 ns.HEADER_NAME_MAX = 18
 
 local headers = {}
@@ -38,14 +38,14 @@ local function GetBagIcon(bagID)
 end
 
 local function BagTable()
-	if type(Backend) ~= "table" or type(Backend.GetCurrentCharacter) ~= "function" or type(Backend.GetCharacter) ~= "function" then
+	if type(BackendMaster) ~= "table" or type(BackendMaster.GetCurrentCharacter) ~= "function" or type(BackendMaster.GetCharacter) ~= "function" then
 		return nil
 	end
-	local fullName = Backend.GetCurrentCharacter()
+	local fullName = BackendMaster.GetCurrentCharacter()
 	if type(fullName) ~= "string" then
 		return nil
 	end
-	local row = Backend.GetCharacter(fullName)
+	local row = BackendMaster.GetCharacter(fullName)
 	if type(row) ~= "table" or type(row.bags) ~= "table" then
 		return nil
 	end
@@ -212,14 +212,13 @@ local function MaxContentWidth()
 end
 
 local function ColumnsForCount(count)
-	if count <= 1 then
+	if count < 1 then
 		return 1
 	end
-	local side = math.ceil(math.sqrt(count))
-	if side > ns.COLUMNS then
+	if count > ns.COLUMNS then
 		return ns.COLUMNS
 	end
-	return side
+	return count
 end
 
 local function SectionBox(header, section)
@@ -298,8 +297,8 @@ local function AcquireHeader(parent, index)
 	header:SetHeight(ns.HEADER_HEIGHT)
 	header:EnableMouse(false)
 	header.text = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-	header.text:SetPoint("LEFT", 0, 0)
-	header.text:SetPoint("RIGHT", 0, 0)
+	header.text:SetPoint("TOPLEFT", 0, 1)
+	header.text:SetPoint("TOPRIGHT", 0, 1)
 	header.text:SetJustifyH("LEFT")
 	header.text:SetWordWrap(false)
 	header.text:SetTextColor(1, 0.84, 0.45)
@@ -318,6 +317,38 @@ function ns.HideHeaders()
 	end
 end
 
+local function MerchantWillSell()
+	local ok, sell = pcall(function()
+		if not MerchantFrame or not MerchantFrame:IsShown() then
+			return false
+		end
+		return MerchantFrame.selectedTab ~= 2
+	end)
+	return ok and sell
+end
+
+local function ApplyRightClick(button)
+	if InCombatLockdown() then
+		return
+	end
+	local noop = ATTRIBUTE_NOOP or ""
+	button:SetAttribute("shift-type2", noop)
+	button:SetAttribute("ctrl-type2", noop)
+	button:SetAttribute("alt-type2", noop)
+	if MerchantWillSell() then
+		button:SetAttribute("type2", nil)
+		button:SetAttribute("item2", nil)
+		return
+	end
+	local bag = button.GetBagID and button:GetBagID()
+	local slot = button:GetID()
+	if bag == nil or slot == nil then
+		return
+	end
+	button:SetAttribute("type2", "item")
+	button:SetAttribute("item2", bag .. " " .. slot)
+end
+
 local function AcquireButton(parent, index)
 	local button = buttons[index]
 	if button then
@@ -328,11 +359,21 @@ local function AcquireButton(parent, index)
 	button = CreateFrame("ItemButton", "BagMasterItem" .. index, parent, "ContainerFrameItemButtonTemplate,SecureActionButtonTemplate")
 	button:SetSize(ns.ITEM_SIZE, ns.ITEM_SIZE)
 	button:SetAttribute("useOnKeyDown", false)
+	button:SetScript("PreClick", function(self, mouseButton)
+		if mouseButton ~= "RightButton" or IsModifiedClick() then
+			return
+		end
+		ApplyRightClick(self)
+	end)
 	button:SetScript("PostClick", function(self, mouseButton)
 		if IsModifiedClick() then
 			if ContainerFrameItemButtonMixin and ContainerFrameItemButtonMixin.OnModifiedClick then
 				ContainerFrameItemButtonMixin.OnModifiedClick(self, mouseButton)
 			end
+			return
+		end
+		if mouseButton == "RightButton" and MerchantWillSell() and ContainerFrameItemButton_OnClick then
+			ContainerFrameItemButton_OnClick(self, mouseButton)
 			return
 		end
 		if mouseButton == "LeftButton" and C_Container and C_Container.PickupContainerItem then
@@ -364,13 +405,7 @@ local function AssignSlot(button, bag, slot)
 		button:SetBagID(bag)
 	end
 	button:SetID(slot)
-	local place = bag .. " " .. slot
-	local noop = ATTRIBUTE_NOOP or ""
-	button:SetAttribute("type2", "item")
-	button:SetAttribute("item2", place)
-	button:SetAttribute("shift-type2", noop)
-	button:SetAttribute("ctrl-type2", noop)
-	button:SetAttribute("alt-type2", noop)
+	ApplyRightClick(button)
 	button:Show()
 end
 
@@ -453,6 +488,16 @@ local function LayoutSections()
 		for i = 1, #buttons do
 			buttons[i]:Hide()
 		end
+		local window = ns.GetWindow()
+		if window then
+			window.itemHeight = 0
+			local width = 220
+			local footer = window.BOTTOM_BAR or 24
+			if ns.LayoutFooter then
+				footer = ns.LayoutFooter(width)
+			end
+			ns.SetWindowSize(width, (window.TOP_BAR or 36) + footer)
+		end
 		return
 	end
 
@@ -523,7 +568,12 @@ local function LayoutSections()
 		if width < 186 then
 			width = 186
 		end
-		local height = (window.TOP_BAR or 36) + offsetY + (window.BOTTOM_BAR or 24)
+		window.itemHeight = offsetY
+		local footer = window.BOTTOM_BAR or 24
+		if ns.LayoutFooter then
+			footer = ns.LayoutFooter(width)
+		end
+		local height = (window.TOP_BAR or 36) + offsetY + footer
 		ns.SetWindowSize(width, height)
 	end
 

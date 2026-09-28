@@ -134,6 +134,12 @@ for addon_dir in "$REPO_ROOT"/*/; do
 	copied=$((copied + 1))
 done
 
+# Renamed to BackendMaster. Drop the old client folder so both do not load.
+if [[ -e "$addons_dir/Backend" || -L "$addons_dir/Backend" ]]; then
+	rm -rf "$addons_dir/Backend"
+	echo "Removed old Backend addon (now BackendMaster)."
+fi
+
 if [[ "$copied" -eq 0 && "$skipped" -eq 0 ]]; then
 	echo "No addon folders found in $REPO_ROOT (expected FolderName/FolderName.toc)"
 	exit 1

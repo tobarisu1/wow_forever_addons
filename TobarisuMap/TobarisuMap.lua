@@ -18,6 +18,7 @@ local defaults = {
 	point = "TOPRIGHT",
 	x = -10,
 	y = -10,
+	widgets = {},
 }
 
 function ns.Print(message)

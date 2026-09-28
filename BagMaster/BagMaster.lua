@@ -78,6 +78,9 @@ end
 
 function ns.SetLayout(layout)
 	BagMasterDB.layout = layout
+	if ns.UpdateLayoutButton then
+		ns.UpdateLayoutButton()
+	end
 	ns.RefreshBags()
 	Print("layout " .. layout)
 end
@@ -135,8 +138,8 @@ local started = false
 local waitingReady = false
 local warnedMissing = false
 
-local function BackendLoaded()
-	return type(Backend) == "table" and type(Backend.IsReady) == "function" and type(Backend.RegisterCallback) == "function"
+local function BackendMasterLoaded()
+	return type(BackendMaster) == "table" and type(BackendMaster.IsReady) == "function" and type(BackendMaster.RegisterCallback) == "function"
 end
 
 local function Start()
@@ -147,17 +150,17 @@ local function Start()
 	if BagMasterDB.highlightItems == nil then
 		BagMasterDB.highlightItems = true
 	end
-	if not BackendLoaded() then
+	if not BackendMasterLoaded() then
 		if not warnedMissing then
 			warnedMissing = true
-			Print("Backend is not loaded. Enable Backend, then /reload.")
+			Print("BackendMaster is not loaded. Enable BackendMaster, then /reload.")
 		end
 		return false
 	end
-	if not Backend.IsReady() then
+	if not BackendMaster.IsReady() then
 		if not waitingReady then
 			waitingReady = true
-			Backend.RegisterCallback("Ready", function()
+			BackendMaster.RegisterCallback("Ready", function()
 				waitingReady = false
 				Start()
 			end)
