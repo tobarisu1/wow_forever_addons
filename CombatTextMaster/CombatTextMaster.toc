@@ -1,0 +1,11 @@
+## Interface: 120105
+## Title: CombatTextMaster
+## Notes: Reactive alerts and incoming damage. /ctm for the window.
+## Author: tobarisu1
+## Version: 0.1.0
+## IconTexture: Interface\Icons\Ability_MeleeDamage
+## SavedVariables: CombatTextMasterDB
+
+CombatTextMaster.lua
+Display.lua
+Window.lua

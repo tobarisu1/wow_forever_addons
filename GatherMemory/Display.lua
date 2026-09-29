@@ -128,15 +128,59 @@ local function ReleaseAll()
 	end
 end
 
-local function PlaceOnMinimap(node, loc, radius, halfW, halfH, rotate, sinFacing, cosFacing)
-	if not loc or not loc.x or not loc.y or not node or not node.x or not node.y then
+local function SameMap(a, b)
+	a = ns.PublicNumber(a) or tonumber(a)
+	b = ns.PublicNumber(b) or tonumber(b)
+	return a ~= nil and a == b
+end
+
+-- GetWorldPosFromMapPos:GetXY is (north, west), not (east, north).
+-- https://github.com/Nevcairiel/HereBeDragons HereBeDragons-2.0 processMap
+local function WorldAxes(uiMapID, x, y)
+	if not C_Map or not C_Map.GetWorldPosFromMapPos or not CreateVector2D then
 		return nil
 	end
-	local playerX = ns.PublicNumber(loc.x)
-	local playerY = ns.PublicNumber(loc.y)
+	uiMapID = ns.PublicNumber(uiMapID) or tonumber(uiMapID)
+	x = ns.PublicNumber(x)
+	y = ns.PublicNumber(y)
+	if not uiMapID or not x or not y then
+		return nil
+	end
+	local continent, worldPos
+	local ok = pcall(function()
+		continent, worldPos = C_Map.GetWorldPosFromMapPos(uiMapID, CreateVector2D(x, y))
+	end)
+	if not ok or not worldPos or not worldPos.GetXY then
+		return nil
+	end
+	local north, west = worldPos:GetXY()
+	north = ns.PublicNumber(north)
+	west = ns.PublicNumber(west)
+	continent = ns.PublicNumber(continent)
+	if not north or not west or continent == nil then
+		return nil
+	end
+	return continent, north, west
+end
+
+local function YardsFromPlayer(node, loc, playerWorld)
 	local nodeX = ns.PublicNumber(node.x)
 	local nodeY = ns.PublicNumber(node.y)
-	if not playerX or not playerY or not nodeX or not nodeY then
+	local playerX = ns.PublicNumber(loc.x)
+	local playerY = ns.PublicNumber(loc.y)
+	if not nodeX or not nodeY or not playerX or not playerY then
+		return nil
+	end
+	if playerWorld then
+		local continent, north, west = WorldAxes(node.uiMapID, nodeX, nodeY)
+		if continent and continent == playerWorld.continent then
+			return playerWorld.west - west, north - playerWorld.north
+		end
+		if continent then
+			return nil
+		end
+	end
+	if not SameMap(node.uiMapID, loc.uiMapID) then
 		return nil
 	end
 	local mapW, mapH
@@ -148,12 +192,21 @@ local function PlaceOnMinimap(node, loc, radius, halfW, halfH, rotate, sinFacing
 	if not mapW or not mapH or mapW == 0 or mapH == 0 then
 		mapW, mapH = 1000, 1000
 	end
+	-- Map coords run +x east and +y south; the minimap runs +x east and +y north.
+	return (nodeX - playerX) * mapW, (playerY - nodeY) * mapH
+end
+
+local function PlaceOnMinimap(node, loc, radius, halfW, halfH, rotate, sinFacing, cosFacing, playerWorld)
+	if not loc or not loc.x or not loc.y or not node or not node.x or not node.y then
+		return nil
+	end
+	local east, north = YardsFromPlayer(node, loc, playerWorld)
+	if not east or not north then
+		return nil
+	end
 	radius = ns.PublicNumber(radius) or 150
 	halfW = ns.PublicNumber(halfW) or 150
 	halfH = ns.PublicNumber(halfH) or 150
-	-- Map coords run +x east and +y south; the minimap runs +x east and +y north.
-	local east = (nodeX - playerX) * mapW
-	local north = (playerY - nodeY) * mapH
 	if rotate then
 		-- GetPlayerFacing is 0 at north and increases counterclockwise, so forward
 		-- is (-sin, cos) in east/north terms. Rotate that onto screen up.
@@ -204,13 +257,18 @@ function ns.UpdateMinimap(force)
 	local facing = ns.PublicNumber(GetPlayerFacing()) or 0
 	local rotate = RotateMinimap()
 	local sinFacing, cosFacing = math.sin(facing), math.cos(facing)
+	local continent, north, west = WorldAxes(loc and loc.uiMapID, loc and loc.x, loc and loc.y)
+	local playerWorld
+	if continent then
+		playerWorld = { continent = continent, north = north, west = west }
+	end
 
 	local needed = {}
 	ns.ForEachNode(function(node)
 		if ns.IsKindShown(node.kind) == false then
 			return
 		end
-		local px, py = PlaceOnMinimap(node, loc, radius, width, height, rotate, sinFacing, cosFacing)
+		local px, py = PlaceOnMinimap(node, loc, radius, width, height, rotate, sinFacing, cosFacing, playerWorld)
 		if px == nil or py == nil then
 			return
 		end
@@ -265,20 +323,28 @@ function ns.DescribeMinimap()
 	local halfW, halfH = PinHalfSize()
 	local rotate = RotateMinimap()
 	local facing = ns.PublicNumber(GetPlayerFacing())
+	local continent, north, west = WorldAxes(loc.uiMapID, loc.x, loc.y)
+	local playerWorld
+	if continent then
+		playerWorld = { continent = continent, north = north, west = west }
+	end
 	print(string.format("view radius: %s yards, minimap half-size %.0f x %.0f", tostring(radius), halfW, halfH))
 	print(string.format("square: %s, rotating: %s, facing: %s",
 		tostring(squareMinimap), tostring(rotate), tostring(facing)))
+	if playerWorld then
+		print(string.format("player world: continent %s", tostring(playerWorld.continent)))
+	else
+		print("player world position unavailable")
+	end
 	local sinFacing, cosFacing = math.sin(facing or 0), math.cos(facing or 0)
 	local shown = 0
 	ns.ForEachNode(function(node)
-		local px, py = PlaceOnMinimap(node, loc, radius, halfW, halfH, rotate, sinFacing, cosFacing)
-		local mapW = ns.PublicNumber(rawW) or 1000
-		local mapH = ns.PublicNumber(rawH) or 1000
-		local east = (node.x - loc.x) * mapW
-		local north = (loc.y - node.y) * mapH
+		local east, northYards = YardsFromPlayer(node, loc, playerWorld)
+		local px, py = PlaceOnMinimap(node, loc, radius, halfW, halfH, rotate, sinFacing, cosFacing, playerWorld)
 		shown = shown + 1
-		print(string.format("  %s (%s) at %.4f,%.4f | %.0fy east %.0fy north | pin %s,%s",
-			tostring(node.name), tostring(node.kind), node.x, node.y, east, north,
+		print(string.format("  %s (%s) map %s at %.4f,%.4f | %.0fy east %.0fy north | pin %s,%s",
+			tostring(node.name), tostring(node.kind), tostring(node.uiMapID), node.x, node.y,
+			east or 0, northYards or 0,
 			px and string.format("%.0f", px) or "nil",
 			py and string.format("%.0f", py) or "nil"))
 	end)

@@ -647,31 +647,143 @@ function ns.ApplyPosition()
 	)
 end
 
-function ns.ApplySize()
-	local size = TobarisuMapDB.size or 200
-	if Minimap then
-		Minimap:SetSize(size, size)
+local applyingLayout = false
+
+local function MapSize()
+	return (TobarisuMapDB and TobarisuMapDB.size) or 300
+end
+
+local function Nearly(a, b)
+	return math.abs((a or 0) - (b or 0)) < 0.5
+end
+
+local function AlreadySized(frame, width, height)
+	if not frame then
+		return true
 	end
+	local w, h = frame:GetSize()
+	return Nearly(w, width) and Nearly(h, height)
+end
+
+local function AlreadyPoint(frame, point, relativeTo, relativePoint, x, y)
+	if not frame or frame:GetNumPoints() ~= 1 then
+		return false
+	end
+	local p, rel, rp, ox, oy = frame:GetPoint(1)
+	return p == point and rel == relativeTo and rp == relativePoint and Nearly(ox, x) and Nearly(oy, y)
+end
+
+local function PlacePlayerCoords(container)
+	-- 12.1.5 anchors this 18px under the minimap, outside the square.
+	local coords = container and container.PlayerCoords
+	if not coords or not Minimap then
+		return
+	end
+	if AlreadyPoint(coords, "BOTTOM", Minimap, "BOTTOM", 0, 6) then
+		return
+	end
+	coords:ClearAllPoints()
+	coords:SetPoint("BOTTOM", Minimap, "BOTTOM", 0, 6)
+end
+
+function ns.ApplySize(keepWidgets)
+	if applyingLayout then
+		return
+	end
+	applyingLayout = true
+
+	local size = MapSize()
 	local cluster = ns.GetCluster()
 	local container = cluster and cluster.MinimapContainer
-	if container then
-		container:SetSize(size, size)
+	local yOffset = -ns.HEADER_HEIGHT / 2
+	if container and container.SetScale and not Nearly(container:GetScale(), 1) then
+		container:SetScale(1)
 	end
-	if header then
+	if container and cluster and cluster ~= Minimap then
+		if not AlreadyPoint(container, "CENTER", cluster, "CENTER", 0, yOffset) then
+			container:ClearAllPoints()
+			container:SetPoint("CENTER", cluster, "CENTER", 0, yOffset)
+		end
+		if not AlreadySized(container, size, size) then
+			container:SetSize(size, size)
+		end
+	end
+	if Minimap then
+		local anchor = container or cluster
+		local anchorY = container and 0 or yOffset
+		if anchor and not AlreadyPoint(Minimap, "CENTER", anchor, "CENTER", 0, anchorY) then
+			Minimap:ClearAllPoints()
+			Minimap:SetPoint("CENTER", anchor, "CENTER", 0, anchorY)
+		end
+		if not AlreadySized(Minimap, size, size) then
+			Minimap:SetSize(size, size)
+		end
+	end
+	if cluster and cluster ~= Minimap then
+		local height = size + ns.HEADER_HEIGHT
+		if cluster.SetFixedSize then
+			local fixedW, fixedH = nil, nil
+			if cluster.GetFixedWidth then
+				fixedW = cluster:GetFixedWidth()
+			end
+			if cluster.GetFixedHeight then
+				fixedH = cluster:GetFixedHeight()
+			end
+			if not Nearly(fixedW, size) or not Nearly(fixedH, height) then
+				cluster:SetFixedSize(size, height)
+			end
+		end
+		if not AlreadySized(cluster, size, height) then
+			cluster:SetSize(size, height)
+		end
+	end
+	PlacePlayerCoords(container)
+	if header and not Nearly(header:GetWidth(), size) then
 		header:SetWidth(size)
 	end
-	if mover and Minimap then
+	if mover and Minimap and (mover:GetNumPoints() or 0) < 1 then
 		mover:ClearAllPoints()
 		mover:SetAllPoints(Minimap)
 	end
-	if ns.LayoutWidgets then
-		ns.LayoutWidgets()
+	if not keepWidgets then
+		if ns.LayoutWidgets then
+			ns.LayoutWidgets()
+		end
+		if ns.PlaceCalendar then
+			ns.PlaceCalendar()
+		end
+		if ns.PlaceTracking then
+			ns.PlaceTracking()
+		end
 	end
-	if ns.PlaceCalendar then
-		ns.PlaceCalendar()
+
+	applyingLayout = false
+end
+
+local function HookClusterLayout(cluster)
+	if not cluster or cluster.__tmapLayoutHook or cluster == Minimap then
+		return
 	end
-	if ns.PlaceTracking then
-		ns.PlaceTracking()
+	cluster.__tmapLayoutHook = true
+	local container = cluster.MinimapContainer
+	if container and container.SetPoint then
+		hooksecurefunc(container, "SetPoint", function(self, point, relativeTo)
+			if applyingLayout or not ns.IsEnabled() then
+				return
+			end
+			if point == "CENTER" and relativeTo == cluster then
+				return
+			end
+			ns.ApplySize(true)
+		end)
+	end
+	if cluster.Layout then
+		hooksecurefunc(cluster, "Layout", function()
+			if applyingLayout or not ns.IsEnabled() then
+				return
+			end
+			ns.ApplySize(true)
+		end)
 	end
 end
 
@@ -750,6 +862,7 @@ local function ApplyMapBorder(cluster)
 		})
 		mapBorder:SetBackdropBorderColor(1, 0.86, 0.55, 1)
 	end
+	mapBorder.ignoreInLayout = true
 	mapBorder:SetFrameStrata(cluster:GetFrameStrata() or "LOW")
 	local level = cluster:GetFrameLevel() or 0
 	if Minimap and Minimap.GetFrameLevel then
@@ -785,32 +898,16 @@ function ns.InitLayout()
 		cluster:SetDontSavePosition(true)
 	end
 
-	local size = TobarisuMapDB.size or 200
-	if cluster.MinimapContainer then
-		cluster.MinimapContainer:ClearAllPoints()
-		cluster.MinimapContainer:SetPoint("CENTER", cluster, "CENTER", 0, -ns.HEADER_HEIGHT / 2)
-		cluster.MinimapContainer:SetSize(size, size)
-	end
-	if Minimap then
-		Minimap:ClearAllPoints()
-		if cluster.MinimapContainer then
-			Minimap:SetPoint("CENTER", cluster.MinimapContainer, "CENTER")
-		else
-			Minimap:SetPoint("CENTER", cluster, "CENTER", 0, -ns.HEADER_HEIGHT / 2)
-		end
-		Minimap:SetSize(size, size)
-	end
-
-	cluster:SetSize(size, size + ns.HEADER_HEIGHT)
-
 	CreateHeader(cluster)
+	header.ignoreInLayout = true
 	header:ClearAllPoints()
 	header:SetPoint("BOTTOM", Minimap or cluster, "TOP", 0, 2)
-	header:SetWidth(size)
 
 	CreateMover(cluster)
+	mover.ignoreInLayout = true
 	mover:SetAllPoints(Minimap or cluster)
 
+	HookClusterLayout(cluster)
 	ns.ApplyPosition()
 	ns.ApplySize()
 	ApplyMapBorder(cluster)

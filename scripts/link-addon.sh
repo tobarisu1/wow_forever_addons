@@ -4,29 +4,17 @@ set -euo pipefail
 WOW_ROOT="${WOW_ROOT:-/Applications/World of Warcraft}"
 DEFAULT_CLIENT="_classic_beta_"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-INCLUDE_SKIPPED=0
 
 usage() {
-	echo "Usage: $0 [--all] [client-folder-or-addons-path]"
+	echo "Usage: $0 [client-folder-or-addons-path]"
 	echo "Copies each addon into the client as a real folder. Re-run after editing."
 	echo "SavedVariables persist across /reload and relog."
 	echo "Default: $WOW_ROOT/$DEFAULT_CLIENT/Interface/AddOns"
-	echo "By default BagMaster and SplitChat are not copied (and are removed from"
-	echo "AddOns if a previous copy is there). Pass --all to include them."
+	echo "SplitChat is parked and is removed from AddOns if a previous copy is there."
 	echo "Examples:"
 	echo "  $0"
-	echo "  $0 --all"
 	echo "  $0 $DEFAULT_CLIENT"
 	echo "  $0 \"$WOW_ROOT/$DEFAULT_CLIENT/Interface/AddOns\""
-}
-
-skip_addon() {
-	local name="$1"
-	[[ "$INCLUDE_SKIPPED" -eq 1 ]] && return 1
-	case "$name" in
-		BagMaster|SplitChat) return 0 ;;
-		*) return 1 ;;
-	esac
 }
 
 list_clients() {
@@ -48,9 +36,6 @@ for arg in "$@"; do
 		-h|--help)
 			usage
 			exit 0
-			;;
-		--all)
-			INCLUDE_SKIPPED=1
 			;;
 		-*)
 			echo "Unknown option: $arg"
@@ -89,7 +74,6 @@ mkdir -p "$addons_dir"
 
 shopt -s nullglob
 copied=0
-skipped=0
 for addon_dir in "$REPO_ROOT"/*/; do
 	src="${addon_dir%/}"
 	name="$(basename "$src")"
@@ -97,17 +81,6 @@ for addon_dir in "$REPO_ROOT"/*/; do
 		continue
 	fi
 	dest="$addons_dir/$name"
-
-	if skip_addon "$name"; then
-		if [[ -e "$dest" || -L "$dest" ]]; then
-			rm -rf "$dest"
-			echo "Skipped $name (removed from AddOns). Pass --all to copy."
-		else
-			echo "Skipped $name. Pass --all to copy."
-		fi
-		skipped=$((skipped + 1))
-		continue
-	fi
 
 	# Replace any symlink left by an older version of this script so the client
 	# folder is a real copy.
@@ -140,7 +113,13 @@ if [[ -e "$addons_dir/Backend" || -L "$addons_dir/Backend" ]]; then
 	echo "Removed old Backend addon (now BackendMaster)."
 fi
 
-if [[ "$copied" -eq 0 && "$skipped" -eq 0 ]]; then
+# Parked. Chatanator is the chat addon until SplitChat is redesigned.
+if [[ -e "$addons_dir/SplitChat" || -L "$addons_dir/SplitChat" ]]; then
+	rm -rf "$addons_dir/SplitChat"
+	echo "Removed SplitChat (parked; use Chatanator)."
+fi
+
+if [[ "$copied" -eq 0 ]]; then
 	echo "No addon folders found in $REPO_ROOT (expected FolderName/FolderName.toc)"
 	exit 1
 fi
