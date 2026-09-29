@@ -18,15 +18,16 @@ Pending addons live as design docs under `_future/` until they have a `.toc`. **
 Angler/                  double-right-click fishing, lure menu, background sound; /an
 BackendMaster/           shared bag and bank cache for other addons; /be
 BagMaster/               category bag window; reads BackendMaster; /bm
+CombatTextMaster/        ready alerts and incoming damage for rogue, warrior, priest, shaman; /ctm
 CursorTooltip/           mouse-cursor tooltips; /mtt on | off | status
 TooltipMaster/           item tooltip lines for kind and profession use; /tm
 GatherMemory/            personal herb/ore/chest/fish tracker; /gm for options
 OldManQuester/           quest UI for ultrawide (and easier reading); /omq
 PhatLewtDb/              personal loot log; zone, mob, and drop rates; /pld
-SplitChat/               stalled; chat left, logs right; /sc
 TobarisuMap/             square movable minimap; /tmap for options
 _future/                 design docs for addons not built yet
   DKPLedger.md           raid DKP ledger; per-kill rows (name, class, spec, boss, time)
+  SplitChat/             parked chat panes; use Chatanator until this is redesigned
 scripts/link-addon.sh    Mac: copy addons into the Forever client
 scripts/link-addon.bat   Windows: copy addons into the Forever client
 ```
@@ -41,14 +42,13 @@ Default WoW root is `/Applications/World of Warcraft`. Forever beta lives in `_c
 ./scripts/link-addon.sh
 ```
 
-That creates `/Applications/World of Warcraft/_classic_beta_/Interface/AddOns` if needed and copies each addon folder at the repo root (`FolderName/FolderName.toc`) into it, including **BackendMaster**. **BagMaster** and **SplitChat** are skipped by default (and removed from AddOns if a previous copy is there). Pass `--all` to include them. BagMaster needs BackendMaster enabled. The WoW folder name is case-sensitive: `AddOns`, not `Addons`.
+That creates `/Applications/World of Warcraft/_classic_beta_/Interface/AddOns` if needed and copies each addon folder at the repo root (`FolderName/FolderName.toc`) into it, including **BackendMaster** and **BagMaster**. **SplitChat** is parked and removed from AddOns if a previous copy is there. BagMaster needs BackendMaster enabled. The WoW folder name is case-sensitive: `AddOns`, not `Addons`.
 
 The client gets its own copy, so **re-run the script after editing** and fully restart WoW when the change is a new file or TOC. Lua-only edits need `/reload`. SavedVariables persist across `/reload` and relog.
 
 Optional overrides:
 
 ```bash
-./scripts/link-addon.sh --all
 ./scripts/link-addon.sh _classic_beta_
 ./scripts/link-addon.sh "/Applications/World of Warcraft/_classic_beta_/Interface/AddOns"
 ```
@@ -65,7 +65,7 @@ From Command Prompt or PowerShell, in this repo:
 scripts\link-addon.bat
 ```
 
-You can also double-click `scripts\link-addon.bat`. That creates `_classic_beta_\Interface\AddOns` if needed and copies each addon folder (`FolderName\FolderName.toc`) into it with `robocopy /MIR`, including **BackendMaster**. **BagMaster** and **SplitChat** are skipped by default; pass `--all` to include them. BagMaster needs BackendMaster enabled. The WoW folder name is case-sensitive: `AddOns`, not `Addons`.
+You can also double-click `scripts\link-addon.bat`. That creates `_classic_beta_\Interface\AddOns` if needed and copies each addon folder (`FolderName\FolderName.toc`) into it with `robocopy /MIR`, including **BackendMaster** and **BagMaster**. **SplitChat** is parked and removed from AddOns if a previous copy is there. BagMaster needs BackendMaster enabled. The WoW folder name is case-sensitive: `AddOns`, not `Addons`.
 
 As on Mac, the client gets its own copy, so re-run it after editing and fully restart WoW.
 
@@ -79,7 +79,6 @@ scripts\link-addon.bat
 Or pass a client folder / AddOns path:
 
 ```bat
-scripts\link-addon.bat --all
 scripts\link-addon.bat _classic_beta_
 scripts\link-addon.bat "D:\Games\World of Warcraft\_classic_beta_"
 scripts\link-addon.bat "D:\Games\World of Warcraft\_classic_beta_\Interface\AddOns"
@@ -87,7 +86,7 @@ scripts\link-addon.bat "D:\Games\World of Warcraft\_classic_beta_\Interface\AddO
 
 If linking fails, run Command Prompt as Administrator, or turn on **Settings > System > For developers > Developer Mode**.
 
-Then, at the character-select screen, click **AddOns**, enable **Angler**, **BackendMaster**, **CursorTooltip**, **GatherMemory**, **OldManQuester**, **PhatLewtDb**, **TobarisuMap**, and **TooltipMaster**, and log in. Enable **BagMaster** and **SplitChat** only if you copied with `--all`. BagMaster, PhatLewtDb, and TooltipMaster will not start unless BackendMaster is enabled.
+Then, at the character-select screen, click **AddOns**, enable **Angler**, **BackendMaster**, **BagMaster**, **CombatTextMaster**, **CursorTooltip**, **GatherMemory**, **OldManQuester**, **PhatLewtDb**, **TobarisuMap**, and **TooltipMaster**, and log in. Use **Chatanator** for chat. BagMaster, PhatLewtDb, and TooltipMaster will not start unless BackendMaster is enabled.
 
 ## Angler
 
@@ -116,7 +115,7 @@ Shared bag and bank cache, plus item facts for other addons. It scans the bags a
 
 Working. Replaces the default bag window with a gold-bordered parchment panel sized to the items inside it. Item lists come from BackendMaster. The default layout groups items into labeled sections (Quest, Consumable, Weapon, Armor, Crafting types, Junk, Empty). The **Type** button in the window switches that to one section per worn bag, and back. Gold sits at the bottom right, with currencies on that same row. Empty slots inside a worn bag still show; bag slots you have not equipped do not. Quest items get a gold highlight. The search box dims non-matches; type `quest`, `junk`, `empty`, and similar keywords to also match by type.
 
-The copy script skips this addon unless you pass `--all`. Enable **BackendMaster** as well, or BagMaster stays off.
+Enable **BackendMaster** as well, or BagMaster stays off.
 
 - `/bm` — print the menu and current state
 - `/bm on` — enable
@@ -128,6 +127,34 @@ The copy script skips this addon unless you pass `--all`. Enable **BackendMaster
 - `/bm status` — print ON or OFF, layout, and items
 
 `/bagmaster` is an alias. On/off, layout, items, and window position are saved across `/reload` and logins. Drag the window to move it. Press B or the bag key to open it.
+
+## CombatTextMaster
+
+Shows gold ready text above your character, and the damage you take. The damage you deal stays as the game's numbers over your target. For now the list is rogue, warrior, priest, and shaman.
+
+`/ctm` opens a portrait window. **Look** picks the font, size, and outline, with a sample of the alert and a damage number. **Alerts** is the list for this character: a class header, then each learned ability. Open a row for what it watches. Uncheck a row to silence it. Abilities this character has not learned stay off the list.
+
+Two kinds of alert:
+
+- **Ready.** The game announces these when they become usable: Riposte, Overpower, and Revenge.
+- **Short cooldown.** This addon watches the cooldown and uses the same gold text when it is ready again.
+
+| Class | Ready | Short cooldown |
+|---|---|---|
+| Rogue | Riposte | Kick, Ghostly Strike, Kidney Shot |
+| Warrior | Overpower, Revenge | Mortal Strike, Bloodthirst, Shield Slam, Whirlwind |
+| Priest | | Mind Blast, Holy Fire, Power Word: Shield |
+| Shaman | | Stormstrike, Earth Shock |
+
+Earth Shock stands in for the shared shock cooldown, so Flame Shock and Frost Shock come off cooldown with it.
+
+- `/ctm` — print the menu and open Look
+- `/ctm alerts` — open the alert list
+- `/ctm on` — enable
+- `/ctm off` — disable
+- `/ctm status` — print ON or OFF, font, size, and outline
+
+`/combattext` is an alias. Drag the title bar to move the window. The font, outline, size, window position, and which alerts are on are saved across `/reload` and logins.
 
 ## CursorTooltip
 
@@ -195,25 +222,6 @@ Needs **BackendMaster**. A round **PLDB** button sits on the left edge of the mi
 - `/pld clear all` — delete every drop
 
 `/phatlewt` is an alias. Loot is saved whenever you open a corpse, chest, or container. The log, tags, and window position are saved account-wide across `/reload` and logins. Drops are only removed by `/pld clear`.
-
-## SplitChat
-
-**Currently stalled.** The copy script skips this addon unless you pass `--all`.
-
-Two movable chat panes sized for ultrawide. Communication stays on the left (General, Guild, Group, Whisper). Combat log, loot, world (XP, skills, achievements), and system sit on the right. The default Blizzard chat dock and frame art are hidden while SplitChat is on. Message groups are a fixed account-wide layout covering every Blizzard chat type (including guild discord, voice text, and pet battles when the client has them). Uses Blizzard chat frames, so name-click whisper, item/spell links, and the rest of the default chat mouse behavior stay intact. Class-colored names are turned on. Default typeface is Arial Narrow; default size is 20.
-
-- `/sc` — print the menu and current state
-- `/sc on` — enable
-- `/sc off` — disable
-- `/sc lock` — stop dragging
-- `/sc unlock` — drag **Move** or resize from the corner
-- `/sc font` — list faces and sizes
-- `/sc font arial | friz | morpheus | skurri | 2002`
-- `/sc font 12 | 14 | 16 | 18 | 20 | 24 | 27`
-- `/sc reset` — rebuild the default tabs
-- `/sc status`
-
-`/splitchat` is an alias. Pane positions, lock, face, size, and tab layout are saved account-wide. `/sc reset` reapplies the message groups.
 
 ## TobarisuMap
 

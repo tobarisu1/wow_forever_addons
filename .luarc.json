@@ -26,6 +26,9 @@
     "globals": [
       "CreateFrame",
       "SlashCmdList",
+      "SLASH_COMBATTEXTMASTER1",
+      "SLASH_COMBATTEXTMASTER2",
+      "CombatTextMasterDB",
       "SLASH_CURSORTOOLTIP1",
       "SLASH_CURSORTOOLTIP2",
       "SLASH_GATHERMEMORY1",
