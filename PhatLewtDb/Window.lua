@@ -1220,10 +1220,12 @@ local function InitMinimapButton()
 	disc:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
 	disc:SetVertexColor(0.08, 0.06, 0.04, 1)
 
-	local ring = minimapButton:CreateTexture(nil, "BORDER")
+	-- The ring art sits in the top-left of the texture. Shift it so the
+	-- circle lands on the button, matching the bug-report button (60px, +11, -12).
+	local ring = minimapButton:CreateTexture(nil, "OVERLAY")
 	ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-	ring:SetPoint("CENTER", 0, 0)
 	ring:SetSize(42, 42)
+	ring:SetPoint("CENTER", 8, -8)
 
 	minimapButton:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
 	local highlight = minimapButton:GetHighlightTexture()

@@ -450,8 +450,9 @@ function ns.InitWindow()
 
 	local fontRows = math.ceil(#ns.FACES / 2)
 	local sizeAnchor = CreateFrame("Frame", nil, lookPage)
-	sizeAnchor:SetSize(1, 1)
+	sizeAnchor:SetHeight(1)
 	sizeAnchor:SetPoint("TOPLEFT", fontHeader, "BOTTOMLEFT", 0, -8 - fontRows * (ROW + GAP))
+	sizeAnchor:SetPoint("TOPRIGHT", fontHeader, "BOTTOMRIGHT", 0, -8 - fontRows * (ROW + GAP))
 
 	local sizeHeader = SectionHeader(lookPage, "Size", sizeAnchor, -6)
 	local smaller = PanelButton(lookPage, "Smaller", 120)
@@ -469,7 +470,11 @@ function ns.InitWindow()
 	sizeText:SetPoint("RIGHT", larger, "LEFT", 0, 0)
 	sizeText:SetJustifyH("CENTER")
 
-	local outlineHeader = SectionHeader(lookPage, "Outline", smaller, -12)
+	local outlineAnchor = CreateFrame("Frame", nil, lookPage)
+	outlineAnchor:SetHeight(1)
+	outlineAnchor:SetPoint("TOPLEFT", smaller, "BOTTOMLEFT", 0, -12)
+	outlineAnchor:SetPoint("TOPRIGHT", larger, "BOTTOMRIGHT", 0, -12)
+	local outlineHeader = SectionHeader(lookPage, "Outline", outlineAnchor, 0)
 	local outlineCount = #ns.OUTLINES
 	local outlineWidth = (CONTENT - GAP * (outlineCount - 1)) / outlineCount
 	for i = 1, outlineCount do

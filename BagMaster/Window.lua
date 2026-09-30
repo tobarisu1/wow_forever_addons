@@ -9,7 +9,7 @@ local hookedToggles = false
 local cacheHooked = false
 local originals = {}
 
-local TOP_BAR = 28
+local TOP_BAR = 32
 local BOTTOM_BAR = 36
 local PAD = 10
 local FRAME_SCALE = 1
@@ -618,12 +618,13 @@ function ns.InitWindow()
 		ns.HideWindow()
 	end)
 
-	local layoutButton = CreateFrame("Button", nil, window)
-	layoutButton:SetSize(46, 18)
-	layoutButton:SetPoint("RIGHT", close, "LEFT", 0, -1)
-	layoutButton:SetNormalFontObject("GameFontNormalSmall")
-	layoutButton:SetHighlightFontObject("GameFontHighlightSmall")
+	local layoutButton = CreateFrame("Button", nil, window, "UIPanelButtonTemplate")
+	layoutButton:SetSize(64, 22)
+	layoutButton:SetScale(0.8)
 	layoutButton:SetScript("OnClick", function()
+		if PlaySound and SOUNDKIT and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON then
+			PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+		end
 		if ns.GetLayout() == "bags" then
 			ns.SetLayout("category")
 		else
@@ -640,9 +641,10 @@ function ns.InitWindow()
 	ns.UpdateLayoutButton()
 
 	searchBox = CreateFrame("EditBox", "BagMasterSearchBox", window, "SearchBoxTemplate")
-	searchBox:SetHeight(18)
-	searchBox:SetPoint("TOPLEFT", PAD, -8)
-	searchBox:SetPoint("TOPRIGHT", layoutButton, "TOPLEFT", -6, 0)
+	searchBox:SetHeight(20)
+	searchBox:SetPoint("TOPLEFT", PAD, -5)
+	searchBox:SetPoint("TOPRIGHT", close, "TOPLEFT", -70, -7)
+	layoutButton:SetPoint("LEFT", searchBox, "RIGHT", 8, 0)
 	searchBox:SetAutoFocus(false)
 	searchBox:SetMaxLetters(40)
 	searchBox:SetScript("OnTextChanged", function(self)
