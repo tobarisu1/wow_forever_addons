@@ -204,7 +204,10 @@ function ns.Readable(value)
 end
 
 function ns.ReadableString(value)
-	if type(value) ~= "string" or value == "" or ns.IsSecret(value) then
+	if ns.IsSecret(value) then
+		return nil
+	end
+	if type(value) ~= "string" or value == "" then
 		return nil
 	end
 	return value
@@ -356,7 +359,7 @@ function ns.AlertName(alert)
 	local spellID = ns.KnownSpellID(alert) or ns.SpellIDs(alert)[1]
 	if C_Spell and C_Spell.GetSpellName then
 		local ok, name = pcall(C_Spell.GetSpellName, spellID)
-		if ok and type(name) == "string" and name ~= "" and not ns.IsSecret(name) then
+		if ok and not ns.IsSecret(name) and type(name) == "string" and name ~= "" then
 			return name
 		end
 	end
