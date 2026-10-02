@@ -1,4 +1,4 @@
-## Interface: 120105
+## Interface: 16001
 ## Title: PhatLewtDb
 ## Notes: Personal loot log. Always saving. /pld to open.
 ## Author: tobarisu1

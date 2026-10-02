@@ -1,4 +1,4 @@
-## Interface: 120105
+## Interface: 16001
 ## Title: CursorTooltip
 ## Notes: Anchors the default GameTooltip to the mouse cursor. /mtt to toggle.
 ## Author: tobarisu1

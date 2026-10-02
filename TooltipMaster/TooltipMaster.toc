@@ -1,4 +1,4 @@
-## Interface: 120105
+## Interface: 16001
 ## Title: TooltipMaster
 ## Notes: Extra item tooltip lines for junk, profession use, and item kind. /tm to toggle.
 ## Author: tobarisu1

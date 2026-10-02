@@ -30,6 +30,9 @@ function ns.InitDB()
 	if BagMasterDB.layout ~= "bags" and BagMasterDB.layout ~= "category" then
 		BagMasterDB.layout = "category"
 	end
+	if type(BagMasterDB.scale) ~= "number" then
+		BagMasterDB.scale = 1
+	end
 	if BagMasterDB.highlightItems == nil then
 		if type(OldManQuesterDB) == "table" and OldManQuesterDB.highlightItems ~= nil then
 			BagMasterDB.highlightItems = OldManQuesterDB.highlightItems and true or false

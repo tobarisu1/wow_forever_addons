@@ -1,6 +1,6 @@
 # wow_forever_addons
 
-Personal addons for [World of Warcraft: Forever](https://github.com/tobarisu1/wow_forever_addons). Forever gameplay is vanilla-era (level cap 60). The client UI is Mainline: write addons against the **12.1.5 API set**, not Classic Era / 1.12. Lua is still 5.1 plus a `.toc` with `## Interface: 120105`.
+Personal addons for [World of Warcraft: Forever](https://github.com/tobarisu1/wow_forever_addons). Forever gameplay is vanilla-era (level cap 60). The client is Forever **1.60.1**. Write addons against Mainline APIs, not Classic Era / 1.12. Lua is still 5.1 plus a `.toc` with `## Interface: 16001`. That number comes from the live client, not from the retail patch the UI source was built on.
 
 ## Design philosophy
 
@@ -244,7 +244,7 @@ Restyles the Blizzard minimap into a square, borderless, movable map with mousew
 
 ## Interface version
 
-TOCs use Mainline `120105` (patch 12.1.5). If the addon list marks an addon out of date, log in and run:
+TOCs use `16001` (Forever 1.60.1). That number is the live client's interface, from `select(4, GetBuildInfo())`. If the addon list marks an addon out of date, log in and run:
 
 ```
 /run print(select(4, GetBuildInfo()))

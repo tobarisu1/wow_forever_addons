@@ -1,4 +1,4 @@
-## Interface: 120105
+## Interface: 16001
 ## Title: GatherMemory
 ## Notes: Remembers herbs, ore, chests, and fishing pools you personally gather. /gm for options.
 ## Author: tobarisu1
