@@ -1,4 +1,4 @@
-## Interface: 120105
+## Interface: 16001
 ## Title: BagMaster
 ## Notes: Sleek bag window with category or per-bag sections. /bm to toggle.
 ## Author: tobarisu1

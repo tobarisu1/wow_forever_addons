@@ -1,4 +1,4 @@
-## Interface: 120105
+## Interface: 16001
 ## Title: TobarisuMap
 ## Notes: Square movable minimap with mousewheel zoom. /tmap for options.
 ## Author: tobarisu1

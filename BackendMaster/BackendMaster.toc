@@ -1,4 +1,4 @@
-## Interface: 120105
+## Interface: 16001
 ## Title: BackendMaster
 ## Notes: Shared bag and bank cache for other addons. /be for status.
 ## Author: tobarisu1

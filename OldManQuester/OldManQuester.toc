@@ -1,6 +1,6 @@
-## Interface: 120105
+## Interface: 16001
 ## Title: OldManQuester
-## Notes: Quest UI for ultrawide (and easier reading). Classic character window at the same scale. /omq to toggle.
+## Notes: Quest, mail, and book windows for ultrawide (and easier reading). Classic character window at the same scale. /omq to toggle.
 ## Author: tobarisu1
 ## Version: 0.1.0
 ## IconTexture: Interface\Icons\INV_Misc_Book_09

@@ -4,7 +4,7 @@ local window
 local searchBox
 local moneyText
 local moneyFrame
-local tokenBar
+local tokenFrame
 local hookedToggles = false
 local cacheHooked = false
 local originals = {}
@@ -12,9 +12,45 @@ local originals = {}
 local TOP_BAR = 32
 local BOTTOM_BAR = 36
 local PAD = 10
-local FRAME_SCALE = 1
-local MONEY_Y = 8
-local CURRENCY_ROW = 16
+local WELL_PAD = 5
+local CONTENT_INSET = 16
+local CONTENT_V_INSET = 8
+local SCALE_MIN = 0.7
+local SCALE_MAX = 1.4
+local FOOTER_BOTTOM = 8
+local FOOTER_GAP = 4
+local BOX_HEIGHT = 17
+local TOKEN_GAP = 3
+
+function ns.GetScale()
+	local scale = BagMasterDB and BagMasterDB.scale
+	if type(scale) ~= "number" then
+		return 1
+	end
+	if scale < SCALE_MIN then
+		return SCALE_MIN
+	end
+	if scale > SCALE_MAX then
+		return SCALE_MAX
+	end
+	return scale
+end
+
+function ns.SetScale(scale)
+	if type(scale) ~= "number" then
+		return
+	end
+	if scale < SCALE_MIN then
+		scale = SCALE_MIN
+	end
+	if scale > SCALE_MAX then
+		scale = SCALE_MAX
+	end
+	BagMasterDB.scale = scale
+	if window then
+		window:SetScale(scale)
+	end
+end
 
 function ns.GetWindow()
 	return window
@@ -40,8 +76,6 @@ local function HideBlizzardBags()
 		end
 	end
 end
-
-local tokenButtons = {}
 
 local function UpdateMoney()
 	if moneyFrame and MoneyFrame_UpdateMoney then
@@ -72,51 +106,6 @@ function ns.UpdateMoney()
 	UpdateMoney()
 end
 
-local function IsSecret(value)
-	if value == nil or not issecretvalue then
-		return false
-	end
-	local ok, secret = pcall(issecretvalue, value)
-	return ok and secret
-end
-
-local function Flag(value)
-	if IsSecret(value) then
-		return nil
-	end
-	if value == true then
-		return true
-	end
-	if value == false then
-		return false
-	end
-	return nil
-end
-
-local function HasAmount(quantity)
-	if quantity == nil then
-		return false
-	end
-	if IsSecret(quantity) then
-		return true
-	end
-	local amount = tonumber(quantity)
-	return amount ~= nil and amount > 0
-end
-
-local function CurrencyText(quantity)
-	if IsSecret(quantity) then
-		return quantity
-	end
-	if not quantity then
-		return "0"
-	end
-	if BreakUpLargeNumbers then
-		return BreakUpLargeNumbers(quantity)
-	end
-	return tostring(quantity)
-end
-
 local function EnsureTokenUI()
 	if C_AddOns and C_AddOns.LoadAddOn then
 		pcall(C_AddOns.LoadAddOn, "Blizzard_TokenUI")
@@ -125,275 +114,90 @@ local function EnsureTokenUI()
 	end
 end
 
-local function EnsureTokenBar()
-	if tokenBar or not window then
-		return tokenBar
+local function EnsureTokenFrame()
+	if tokenFrame or not window then
+		return tokenFrame
 	end
-	tokenBar = CreateFrame("Frame", "BagMasterTokenBar", window)
-	tokenBar:SetFrameLevel((window:GetFrameLevel() or 1) + 40)
-	return tokenBar
-end
-
-local function AcquireTokenButton(index)
-	local button = tokenButtons[index]
-	if button then
-		return button
-	end
-	local parent = EnsureTokenBar() or window
-	button = CreateFrame("Button", nil, parent)
-	button:SetHeight(14)
-	button.icon = button:CreateTexture(nil, "OVERLAY")
-	button.icon:SetSize(14, 14)
-	button.icon:SetPoint("RIGHT", 0, 0)
-	button.count = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	button.count:SetPoint("RIGHT", button.icon, "LEFT", -2, 0)
-	button.count:SetJustifyH("RIGHT")
-	button:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		if self.currencyID and GameTooltip.SetCurrencyByID then
-			GameTooltip:SetCurrencyByID(self.currencyID)
-		elseif self.backpackIndex and GameTooltip.SetBackpackToken then
-			GameTooltip:SetBackpackToken(self.backpackIndex)
-		end
-		GameTooltip:Show()
-	end)
-	button:SetScript("OnLeave", function()
-		GameTooltip:Hide()
-	end)
-	button:SetScript("OnClick", function(self)
-		if IsModifiedClick("CHATLINK") and self.currencyID and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyLink then
-			local link = C_CurrencyInfo.GetCurrencyLink(self.currencyID)
-			if link and HandleModifiedItemClick and HandleModifiedItemClick(link) then
-				return
-			end
-		end
-		if CharacterFrame and CharacterFrame.ToggleTokenFrame then
-			CharacterFrame:ToggleTokenFrame()
-		end
-	end)
-	tokenButtons[index] = button
-	return button
-end
-
-local function RememberCurrency(list, icon, quantity, currencyID)
-	if #list >= 8 then
-		return
-	end
-	list[#list + 1] = {
-		icon = icon,
-		quantity = quantity,
-		currencyID = currencyID,
-	}
-end
-
-local function ReadBackpackCurrency(index)
-	if not C_CurrencyInfo or not C_CurrencyInfo.GetBackpackCurrencyInfo then
+	EnsureTokenUI()
+	local ok, frame = pcall(CreateFrame, "Frame", "BagMasterTokenFrame", window, "BackpackTokenFrameTemplate")
+	if not ok or not frame then
 		return nil
 	end
-	local ok, info, quantity, icon, currencyID = pcall(C_CurrencyInfo.GetBackpackCurrencyInfo, index)
-	if not ok or info == nil then
-		return nil
-	end
-	if type(info) == "table" then
-		return info.iconFileID, info.quantity, info.currencyTypesID
-	end
-	return icon, quantity, currencyID
+	tokenFrame = frame
+	tokenFrame:SetFrameLevel((window:GetFrameLevel() or 1) + 40)
+	return tokenFrame
 end
 
-local function WatchedCurrencies()
-	local list = {}
-	for index = 1, 20 do
-		local icon, quantity, currencyID = ReadBackpackCurrency(index)
-		if icon == nil and quantity == nil and currencyID == nil then
-			break
-		end
-		local rowIndex = #list + 1
-		RememberCurrency(list, icon, quantity, currencyID)
-		if list[rowIndex] then
-			list[rowIndex].backpackIndex = index
-		end
+local function BoxWidth(width)
+	local inner = width - 16
+	if inner < 50 then
+		inner = 50
 	end
-	return list
+	return inner
 end
 
-local function LoadCurrencyList()
-	EnsureTokenUI()
-	if not C_CurrencyInfo or not C_CurrencyInfo.ExpandCurrencyList or not C_CurrencyInfo.GetCurrencyListInfo then
-		return
+local function RefreshTokenFrame(width)
+	local frame = EnsureTokenFrame()
+	if not frame then
+		return 0
 	end
-	for _ = 1, 6 do
-		local ok, size = pcall(C_CurrencyInfo.GetCurrencyListSize)
-		if not ok or type(size) ~= "number" or size < 1 then
-			return
-		end
-		if size > 200 then
-			size = 200
-		end
-		local grew = false
-		for index = 1, size do
-			local infoOK, info = pcall(C_CurrencyInfo.GetCurrencyListInfo, index)
-			if infoOK and type(info) == "table" and Flag(info.isHeader) and Flag(info.isHeaderExpanded) == false then
-				pcall(C_CurrencyInfo.ExpandCurrencyList, index, true)
-				grew = true
-				break
-			end
-		end
-		if not grew then
-			return
-		end
+	frame:ClearAllPoints()
+	frame:SetSize(BoxWidth(width), BOX_HEIGHT)
+	frame:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -8, FOOTER_BOTTOM)
+	if frame.SetIsCombinedInventory then
+		frame:SetIsCombinedInventory(true)
 	end
-end
-
-local function OwnedCurrencies()
-	local list = {}
-	if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize or not C_CurrencyInfo.GetCurrencyListInfo then
-		return list
+	local updated = pcall(function()
+		frame:Update()
+	end)
+	local shown = false
+	if updated and frame.ShouldShow then
+		local ok, result = pcall(frame.ShouldShow, frame)
+		shown = ok and result
 	end
-	LoadCurrencyList()
-	local ok, size = pcall(C_CurrencyInfo.GetCurrencyListSize)
-	if not ok or type(size) ~= "number" then
-		return list
+	if not shown then
+		frame:Hide()
+		return 0
 	end
-	if size > 200 then
-		size = 200
+	frame:Show()
+	if frame.UpdateTokenAnchoring then
+		pcall(frame.UpdateTokenAnchoring, frame)
 	end
-	for index = 1, size do
-		local infoOK, info = pcall(C_CurrencyInfo.GetCurrencyListInfo, index)
-		if infoOK and type(info) == "table" and not Flag(info.isHeader) and not Flag(info.isTypeUnused) then
-			if Flag(info.isShowInBackpack) or HasAmount(info.quantity) then
-				RememberCurrency(list, info.iconFileID, info.quantity, info.currencyID)
-			end
-		end
-		if #list >= 8 then
-			break
-		end
-	end
-	return list
-end
-
-local function AlreadyListed(list, currencyID)
-	if currencyID == nil or IsSecret(currencyID) then
-		return false
-	end
-	for index = 1, #list do
-		local existing = list[index].currencyID
-		if not IsSecret(existing) and existing == currencyID then
-			return true
-		end
-	end
-	return false
-end
-
-local function FillCurrencies()
-	EnsureTokenUI()
-	local list = WatchedCurrencies()
-	local owned = OwnedCurrencies()
-	for index = 1, #owned do
-		if not AlreadyListed(list, owned[index].currencyID) then
-			RememberCurrency(list, owned[index].icon, owned[index].quantity, owned[index].currencyID)
-		end
-	end
-	local bar = EnsureTokenBar()
-	for index = 1, #list do
-		local row = list[index]
-		local button = AcquireTokenButton(index)
-		button:SetID(index)
-		button.currencyID = row.currencyID
-		button.backpackIndex = row.backpackIndex
-		button.count:SetText(CurrencyText(row.quantity))
-		button.icon:SetTexture(nil)
-		if row.icon then
-			pcall(button.icon.SetTexture, button.icon, row.icon)
-			button.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-		end
-		button.icon:Show()
-		local textWidth = 28
-		if not IsSecret(row.quantity) then
-			textWidth = button.count:GetStringWidth() or 28
-		end
-		if textWidth < 12 then
-			textWidth = 28
-		end
-		button:SetWidth(textWidth + 18)
-		button:Show()
-	end
-	for index = #list + 1, #tokenButtons do
-		tokenButtons[index]:Hide()
-	end
-	if bar then
-		if #list > 0 then
-			bar:Show()
-		else
-			bar:Hide()
-		end
-	end
-	return #list
+	return BOX_HEIGHT
 end
 
 function ns.LayoutFooter(width)
 	if not window then
 		return BOTTOM_BAR
 	end
-	UpdateMoney()
-	local moneyAnchor = moneyFrame or moneyText
-	if moneyText and not moneyFrame then
+	local tokenHeight = RefreshTokenFrame(width)
+	local moneyY = FOOTER_BOTTOM
+	if tokenHeight > 0 then
+		moneyY = FOOTER_BOTTOM + tokenHeight + TOKEN_GAP
+	end
+	if moneyFrame then
+		moneyFrame:ClearAllPoints()
+		moneyFrame:SetHeight(BOX_HEIGHT)
+		moneyFrame:SetPoint("BOTTOMLEFT", window, "BOTTOMLEFT", 8, moneyY)
+		moneyFrame:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -8, moneyY)
+		moneyFrame:SetFrameLevel((window:GetFrameLevel() or 1) + 40)
+		moneyFrame:Show()
+	elseif moneyText then
 		moneyText:ClearAllPoints()
-		moneyText:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -16, MONEY_Y)
+		moneyText:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -16, moneyY)
 	end
-
-	local shown = FillCurrencies()
-	local bar = EnsureTokenBar()
-	local rows = 0
-	if bar and shown > 0 and moneyAnchor then
-		local gap = 8
-		local cursor = width - 16
-		local row = 0
-		local rowHeight = 0
-		for index = shown, 1, -1 do
-			local button = tokenButtons[index]
-			local buttonWidth = button:GetWidth()
-			if buttonWidth < 32 then
-				buttonWidth = 48
-			end
-			if cursor - buttonWidth < 16 then
-				row = row + 1
-				cursor = width - 16
-				rowHeight = 0
-			end
-			button:ClearAllPoints()
-			button:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -(width - 16 - cursor), row * CURRENCY_ROW)
-			cursor = cursor - buttonWidth - gap
-			if button:GetHeight() > rowHeight then
-				rowHeight = button:GetHeight()
-			end
-		end
-		rows = row + 1
-		local barHeight = rows * CURRENCY_ROW
-		bar:ClearAllPoints()
-		bar:SetSize(math.max(width - 32, 32), barHeight)
-		bar:SetPoint("BOTTOMRIGHT", moneyAnchor, "TOPRIGHT", 0, 4)
-		bar:Show()
-	end
-
-	local moneyHeight = 16
-	if moneyAnchor and moneyAnchor.GetHeight then
-		local height = moneyAnchor:GetHeight()
-		if height and height > 8 then
-			moneyHeight = height
-		end
-	end
-	local footer = MONEY_Y + moneyHeight + 8
-	if rows > 0 then
-		footer = footer + 4 + (rows * CURRENCY_ROW)
-	end
+	UpdateMoney()
+	local footer = moneyY + BOX_HEIGHT + FOOTER_GAP
 	window.BOTTOM_BAR = footer
 	if window.content then
-		window.content:SetPoint("BOTTOMRIGHT", -PAD, footer)
+		window.content:ClearAllPoints()
+		window.content:SetPoint("TOPLEFT", CONTENT_INSET, -(TOP_BAR + CONTENT_V_INSET))
+		window.content:SetPoint("BOTTOMRIGHT", -CONTENT_INSET, footer + CONTENT_V_INSET)
 	end
 	if window.well then
 		window.well:ClearAllPoints()
-		window.well:SetPoint("TOPLEFT", 5, -TOP_BAR)
-		window.well:SetPoint("BOTTOMRIGHT", -5, footer)
+		window.well:SetPoint("TOPLEFT", WELL_PAD, -TOP_BAR)
+		window.well:SetPoint("BOTTOMRIGHT", -WELL_PAD, footer)
 	end
 	return footer
 end
@@ -406,7 +210,8 @@ function ns.ReflowFooter()
 	local width = window:GetWidth()
 	local footer = ns.LayoutFooter(width)
 	local top = window.TOP_BAR or TOP_BAR
-	ns.SetWindowSize(width, top + window.itemHeight + footer)
+	local vInset = window.CONTENT_V_INSET or 0
+	ns.SetWindowSize(width, top + vInset + window.itemHeight + vInset + footer)
 end
 
 local function SavePosition()
@@ -572,7 +377,31 @@ function ns.SetWindowSize(width, height)
 	if not window then
 		return
 	end
+	local point, relativeTo, relativePoint, x, y = window:GetPoint(1)
+	local oldTop = window:GetTop()
+	local holdTop = point and not string.find(point, "TOP", 1, true)
 	window:SetSize(width, height)
+	if not holdTop or not oldTop or y == nil then
+		return
+	end
+	local newTop = window:GetTop()
+	if not newTop then
+		return
+	end
+	local delta = newTop - oldTop
+	if delta == 0 then
+		return
+	end
+	local parent = relativeTo or UIParent
+	local parentScale = 1
+	if parent.GetEffectiveScale then
+		parentScale = parent:GetEffectiveScale() or 1
+	end
+	local scale = window:GetEffectiveScale() or 1
+	if parentScale > 0 then
+		delta = delta * scale / parentScale
+	end
+	window:SetPoint(point, parent, relativePoint or point, x or 0, y - delta)
 end
 
 function ns.InitWindow()
@@ -589,7 +418,7 @@ function ns.InitWindow()
 	window:SetMovable(true)
 	window:EnableMouse(true)
 	window:SetSize(420, 500)
-	window:SetScale(FRAME_SCALE)
+	window:SetScale(ns.GetScale())
 	window:Hide()
 	window:SetBackdrop({
 		bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -609,7 +438,12 @@ function ns.InitWindow()
 		self:StopMovingOrSizing()
 		SavePosition()
 	end)
-	window:SetScript("OnHide", SavePosition)
+	window:SetScript("OnHide", function()
+		SavePosition()
+		if window.settingsMenu then
+			window.settingsMenu:Hide()
+		end
+	end)
 	tinsert(UISpecialFrames, "BagMasterFrame")
 
 	local close = CreateFrame("Button", nil, window, "UIPanelCloseButtonNoScripts")
@@ -640,11 +474,95 @@ function ns.InitWindow()
 	end
 	ns.UpdateLayoutButton()
 
+	local gearButton = CreateFrame("Button", nil, window, "UIPanelButtonTemplate")
+	gearButton:SetSize(32, 22)
+	gearButton:SetScale(0.8)
+	gearButton:SetText("")
+	local gearIcon = gearButton:CreateTexture(nil, "OVERLAY")
+	gearIcon:SetSize(16, 16)
+	gearIcon:SetPoint("CENTER", 0, 1)
+	gearIcon:SetTexture("Interface\\Buttons\\UI-OptionsButton")
+	gearButton:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Settings")
+		GameTooltip:Show()
+	end)
+	gearButton:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+	gearButton:SetScript("OnClick", function()
+		if PlaySound and SOUNDKIT and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON then
+			PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+		end
+		local menu = window.settingsMenu
+		if menu and menu:IsShown() then
+			menu:Hide()
+			return
+		end
+		if menu then
+			menu:Show()
+		end
+	end)
+
 	searchBox = CreateFrame("EditBox", "BagMasterSearchBox", window, "SearchBoxTemplate")
 	searchBox:SetHeight(20)
-	searchBox:SetPoint("TOPLEFT", PAD, -5)
-	searchBox:SetPoint("TOPRIGHT", close, "TOPLEFT", -70, -7)
-	layoutButton:SetPoint("LEFT", searchBox, "RIGHT", 8, 0)
+	gearButton:SetPoint("TOPRIGHT", close, "TOPLEFT", -12, -9)
+	layoutButton:SetPoint("TOPRIGHT", gearButton, "TOPLEFT", -8, 0)
+	searchBox:SetPoint("TOPLEFT", PAD, -6)
+	searchBox:SetPoint("TOPRIGHT", layoutButton, "TOPLEFT", -8, 0)
+
+	local settingsMenu = CreateFrame("Frame", nil, window, "BackdropTemplate")
+	settingsMenu:SetSize(176, 72)
+	settingsMenu:SetFrameLevel((window:GetFrameLevel() or 1) + 30)
+	settingsMenu:SetPoint("TOPRIGHT", gearButton, "BOTTOMRIGHT", 8, -6)
+	settingsMenu:SetBackdrop({
+		bgFile = "Interface\\FrameGeneral\\UI-Background-Rock",
+		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+		tile = true,
+		tileSize = 256,
+		edgeSize = 8,
+		insets = { left = 2, right = 2, top = 2, bottom = 2 },
+	})
+	settingsMenu:SetBackdropColor(1, 1, 1, 1)
+	settingsMenu:SetBackdropBorderColor(0.7, 0.58, 0.3, 0.9)
+	settingsMenu:EnableMouse(true)
+	settingsMenu:Hide()
+	window.settingsMenu = settingsMenu
+
+	local scaleSlider = CreateFrame("Slider", nil, settingsMenu, "UISliderTemplateWithLabels")
+	scaleSlider:SetSize(144, 17)
+	scaleSlider:SetPoint("CENTER", 0, -6)
+	scaleSlider:SetMinMaxValues(SCALE_MIN, SCALE_MAX)
+	scaleSlider:SetValueStep(0.05)
+	if scaleSlider.SetObeyStepOnDrag then
+		scaleSlider:SetObeyStepOnDrag(true)
+	end
+	scaleSlider.Text:SetText("Scale")
+	scaleSlider.Low:SetText("70%")
+	scaleSlider.High:SetText("140%")
+	local function ShowScale(value)
+		local percent = math.floor((value * 100) + 0.5)
+		scaleSlider.Text:SetText("Scale " .. percent .. "%")
+	end
+	scaleSlider:SetScript("OnValueChanged", function(self, value)
+		ShowScale(value)
+		if self.quiet then
+			return
+		end
+		self.pending = value
+	end)
+	scaleSlider:SetScript("OnMouseUp", function(self)
+		if self.pending then
+			ns.SetScale(self.pending)
+			self.pending = nil
+		end
+	end)
+	settingsMenu:SetScript("OnShow", function()
+		scaleSlider.quiet = true
+		scaleSlider:SetValue(ns.GetScale())
+		scaleSlider.quiet = false
+		ShowScale(ns.GetScale())
+	end)
 	searchBox:SetAutoFocus(false)
 	searchBox:SetMaxLetters(40)
 	searchBox:SetScript("OnTextChanged", function(self)
@@ -670,37 +588,33 @@ function ns.InitWindow()
 	end
 	if createdMoney then
 		moneyFrame:ClearAllPoints()
-		moneyFrame:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -16, MONEY_Y)
+		moneyFrame:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -8, FOOTER_BOTTOM)
 		moneyFrame:SetFrameLevel((window:GetFrameLevel() or 1) + 40)
 		moneyFrame:Show()
 	else
 		moneyText = window:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		moneyText:SetPoint("BOTTOMRIGHT", -16, MONEY_Y)
+		moneyText:SetPoint("BOTTOMRIGHT", -16, FOOTER_BOTTOM)
 		moneyText:SetJustifyH("RIGHT")
 	end
 	window.moneyText = moneyText
-	EnsureTokenBar()
 
 	local well = CreateFrame("Frame", nil, window, "BackdropTemplate")
 	well:SetFrameLevel((window:GetFrameLevel() or 1) + 1)
 	well:SetBackdrop({
-		bgFile = "Interface\\Buttons\\WHITE8X8",
-		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+		bgFile = "Interface\\FrameGeneral\\UI-Background-Rock",
 		tile = true,
-		tileSize = 8,
-		edgeSize = 8,
-		insets = { left = 2, right = 2, top = 2, bottom = 2 },
+		tileSize = 256,
+		insets = { left = 0, right = 0, top = 0, bottom = 0 },
 	})
-	well:SetBackdropColor(0.22, 0.15, 0.09, 0.92)
-	well:SetBackdropBorderColor(0.42, 0.30, 0.14, 0.65)
-	well:SetPoint("TOPLEFT", 5, -TOP_BAR)
-	well:SetPoint("BOTTOMRIGHT", -5, BOTTOM_BAR)
+	well:SetBackdropColor(1, 1, 1, 1)
+	well:SetPoint("TOPLEFT", WELL_PAD, -TOP_BAR)
+	well:SetPoint("BOTTOMRIGHT", -WELL_PAD, BOTTOM_BAR)
 	window.well = well
 
 	local content = CreateFrame("Frame", nil, window)
 	content:SetFrameLevel((window:GetFrameLevel() or 1) + 2)
-	content:SetPoint("TOPLEFT", PAD, -TOP_BAR)
-	content:SetPoint("BOTTOMRIGHT", -PAD, BOTTOM_BAR)
+	content:SetPoint("TOPLEFT", CONTENT_INSET, -(TOP_BAR + CONTENT_V_INSET))
+	content:SetPoint("BOTTOMRIGHT", -CONTENT_INSET, BOTTOM_BAR + CONTENT_V_INSET)
 	function content:IsCombinedBagContainer()
 		return false
 	end
@@ -711,6 +625,8 @@ function ns.InitWindow()
 	window.TOP_BAR = TOP_BAR
 	window.BOTTOM_BAR = BOTTOM_BAR
 	window.PAD = PAD
+	window.CONTENT_INSET = CONTENT_INSET
+	window.CONTENT_V_INSET = CONTENT_V_INSET
 
 	RestorePosition()
 	HookBagToggles()

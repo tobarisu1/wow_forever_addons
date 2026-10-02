@@ -1,4 +1,4 @@
-## Interface: 120105
+## Interface: 16001
 ## Title: CombatTextMaster
 ## Notes: Reactive alerts and incoming damage. /ctm for the window.
 ## Author: tobarisu1

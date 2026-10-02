@@ -2,7 +2,7 @@
 
 Personal raid DKP ledger for Forever. Not built yet. Iterate in-game; this doc is the starting contract.
 
-Forever gameplay is vanilla-era (level cap 60). The client UI is Mainline 12.1.5 (`## Interface: 120105`). No Ace3. Slash commands, not an options panel. Match GatherMemory: one account SavedVariables file, copy via `./scripts/link-addon.sh`. SavedVariables persist across `/reload` and relog.
+Forever gameplay is vanilla-era (level cap 60). The client is Forever 1.60.1 (`## Interface: 16001`). Write Mainline APIs, not Classic Era / 1.12. No Ace3. Slash commands, not an options panel. Match GatherMemory: one account SavedVariables file, copy via `./scripts/link-addon.sh`. SavedVariables persist across `/reload` and relog.
 
 ## Goal
 

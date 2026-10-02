@@ -214,6 +214,32 @@ local function RestoreNamedWraps()
 	end
 end
 
+-- Books, letters, scrolls, and plaques resize themselves (default vs large parchment).
+-- Scale only, and leave the width and height Blizzard just applied.
+local function ApplyReadingScale(frame)
+	if not frame then
+		return
+	end
+	SnapshotSize(frame)
+	local orig = frameSizes[frame]
+	if not orig then
+		return
+	end
+	if IsEnabled() then
+		frame:SetScale(FRAME_SCALE)
+		if frame.SetAttribute then
+			frame:SetAttribute("UIPanelLayout-width", frame:GetWidth() * FRAME_SCALE)
+			frame:SetAttribute("UIPanelLayout-height", frame:GetHeight() * FRAME_SCALE)
+		end
+	else
+		frame:SetScale(orig.scale or 1)
+		if frame.SetAttribute then
+			frame:SetAttribute("UIPanelLayout-width", frame:GetWidth())
+			frame:SetAttribute("UIPanelLayout-height", frame:GetHeight())
+		end
+	end
+end
+
 local function ApplyDialogScale(frame)
 	if not frame then
 		return
@@ -246,6 +272,7 @@ local function SnapshotTargets()
 	SnapshotSize(CharacterFrame)
 	SnapshotSize(MailFrame)
 	SnapshotSize(OpenMailFrame)
+	SnapshotSize(ItemTextFrame)
 end
 
 local function ApplyFrameSizes()
@@ -254,6 +281,7 @@ local function ApplyFrameSizes()
 	ApplyDialogScale(GossipFrame)
 	ApplyDialogScale(MailFrame)
 	ApplyDialogScale(OpenMailFrame)
+	ApplyReadingScale(ItemTextFrame)
 	if ns.ApplyCharacterWindow then
 		ns.ApplyCharacterWindow()
 	end
@@ -580,6 +608,21 @@ local function InstallHooks()
 			return false
 		end
 		OpenMailFrame:HookScript("OnShow", OnDialogShow)
+		return true
+	end)
+
+	HookOnce("itemTextFrameShow", function()
+		if not ItemTextFrame then
+			return false
+		end
+		ItemTextFrame:HookScript("OnShow", OnDialogShow)
+		if type(ItemTextFrame_OnEvent) == "function" then
+			hooksecurefunc("ItemTextFrame_OnEvent", function(self, event)
+				if event == "ITEM_TEXT_READY" or event == "ITEM_TEXT_TRANSLATION" then
+					ApplyReadingScale(self)
+				end
+			end)
+		end
 		return true
 	end)
 

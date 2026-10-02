@@ -6,10 +6,12 @@ ns.ITEM_SPACING_X = 1
 ns.ITEM_SPACING_Y = 1
 ns.HEADER_HEIGHT = 14
 ns.HEADER_GAP = 0
-ns.SECTION_GAP = 2
+ns.SECTION_GAP = 4
+ns.CLUSTER_INSET = 4
 ns.HEADER_NAME_MAX = 18
 
 local headers = {}
+local clusters = {}
 local buttons = {}
 local usedButtons = 0
 
@@ -211,6 +213,29 @@ local function MaxContentWidth()
 	return (ns.COLUMNS * ns.ITEM_SIZE) + ((ns.COLUMNS - 1) * ns.ITEM_SPACING_X)
 end
 
+local function WindowWidth(contentWidth)
+	local pad = 16
+	local frame = ns.GetWindow()
+	if frame and frame.CONTENT_INSET then
+		pad = frame.CONTENT_INSET
+	end
+	if not contentWidth or contentWidth < 1 then
+		contentWidth = 0
+	end
+	local width = (pad * 2) + contentWidth
+	if width < 220 then
+		width = 220
+	end
+	return width
+end
+
+local function WindowHeight(itemHeight, footer)
+	local frame = ns.GetWindow()
+	local top = frame and frame.TOP_BAR or 36
+	local vInset = frame and frame.CONTENT_V_INSET or 0
+	return top + vInset + itemHeight + vInset + footer
+end
+
 local function ColumnsForCount(count)
 	if count < 1 then
 		return 1
@@ -238,18 +263,19 @@ local function SectionBox(header, section)
 	if titleWidth > maxWidth then
 		titleWidth = maxWidth
 	end
-	local width = gridWidth
-	if titleWidth > width then
-		width = titleWidth
+	local inner = gridWidth
+	if titleWidth > inner then
+		inner = titleWidth
 	end
-	if width > maxWidth then
-		width = maxWidth
+	if inner > maxWidth then
+		inner = maxWidth
 	end
+	local inset = ns.CLUSTER_INSET
 	return {
 		section = section,
 		cols = cols,
-		width = width,
-		height = ns.HEADER_HEIGHT + ns.HEADER_GAP + gridHeight,
+		width = inner + (inset * 2),
+		height = inset + ns.HEADER_HEIGHT + ns.HEADER_GAP + gridHeight + inset,
 	}
 end
 
@@ -290,6 +316,7 @@ local function AcquireHeader(parent, index)
 	local header = headers[index]
 	if header then
 		header:SetParent(parent)
+		header:SetFrameLevel((parent:GetFrameLevel() or 1) + 3)
 		header:Show()
 		return header
 	end
@@ -307,13 +334,41 @@ local function AcquireHeader(parent, index)
 	header.line:SetHeight(8)
 	header.line:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 0, 0)
 	header.line:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", 0, 0)
+	header:SetFrameLevel((parent:GetFrameLevel() or 1) + 3)
 	headers[index] = header
 	return header
+end
+
+local function AcquireCluster(parent, index)
+	local frame = clusters[index]
+	if frame then
+		frame:SetParent(parent)
+		frame:Show()
+		return frame
+	end
+	frame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+	frame:SetFrameLevel(parent:GetFrameLevel() or 1)
+	frame:EnableMouse(false)
+	frame:SetBackdrop({
+		bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+		tile = true,
+		tileSize = 16,
+		edgeSize = 8,
+		insets = { left = 2, right = 2, top = 2, bottom = 2 },
+	})
+	frame:SetBackdropColor(0.05, 0.04, 0.03, 0.35)
+	frame:SetBackdropBorderColor(0.7, 0.58, 0.3, 0.75)
+	clusters[index] = frame
+	return frame
 end
 
 function ns.HideHeaders()
 	for i = 1, #headers do
 		headers[i]:Hide()
+	end
+	for i = 1, #clusters do
+		clusters[i]:Hide()
 	end
 end
 
@@ -353,11 +408,13 @@ local function AcquireButton(parent, index)
 	local button = buttons[index]
 	if button then
 		button:SetParent(parent)
+		button:SetFrameLevel((parent:GetFrameLevel() or 1) + 2)
 		button:Show()
 		return button
 	end
 	button = CreateFrame("ItemButton", "BagMasterItem" .. index, parent, "ContainerFrameItemButtonTemplate,SecureActionButtonTemplate")
 	button:SetSize(ns.ITEM_SIZE, ns.ITEM_SIZE)
+	button:SetFrameLevel((parent:GetFrameLevel() or 1) + 2)
 	button:SetAttribute("useOnKeyDown", false)
 	button:SetScript("PreClick", function(self, mouseButton)
 		if mouseButton ~= "RightButton" or IsModifiedClick() then
@@ -380,8 +437,15 @@ local function AcquireButton(parent, index)
 			C_Container.PickupContainerItem(self:GetBagID(), self:GetID())
 		end
 	end)
+	if not button.ItemSlotBackground then
+		local ok, background = pcall(button.CreateTexture, button, nil, "BACKGROUND", "ItemSlotBackgroundCombinedBagsTemplate", -6)
+		if ok and background then
+			background:SetAllPoints(button)
+			button.ItemSlotBackground = background
+		end
+	end
 	if button.ItemSlotBackground then
-		button.ItemSlotBackground:Hide()
+		button.ItemSlotBackground:Show()
 	end
 	if button.UpgradeIcon then
 		button.UpgradeIcon:Hide()
@@ -491,12 +555,12 @@ local function LayoutSections()
 		local window = ns.GetWindow()
 		if window then
 			window.itemHeight = 0
-			local width = 220
+			local width = WindowWidth(0)
 			local footer = window.BOTTOM_BAR or 24
 			if ns.LayoutFooter then
 				footer = ns.LayoutFooter(width)
 			end
-			ns.SetWindowSize(width, (window.TOP_BAR or 36) + footer)
+			ns.SetWindowSize(width, WindowHeight(0, footer))
 		end
 		return
 	end
@@ -522,15 +586,21 @@ local function LayoutSections()
 		for b = 1, #band.boxes do
 			local box = band.boxes[b]
 			headerIndex = headerIndex + 1
+			local inset = ns.CLUSTER_INSET
+			local cluster = AcquireCluster(content, headerIndex)
+			cluster:ClearAllPoints()
+			cluster:SetSize(box.width, box.height)
+			cluster:SetPoint("TOPLEFT", content, "TOPLEFT", box.x, -offsetY)
+
 			local header = AcquireHeader(content, headerIndex)
 			header:ClearAllPoints()
-			header:SetSize(box.width, ns.HEADER_HEIGHT)
-			header:SetPoint("TOPLEFT", content, "TOPLEFT", box.x, -offsetY)
+			header:SetSize(box.width - (inset * 2), ns.HEADER_HEIGHT)
+			header:SetPoint("TOPLEFT", cluster, "TOPLEFT", inset, -inset)
 			header.text:SetText(box.section.title)
 			header:Show()
 
 			local slots = box.section.slots
-			local originY = offsetY + ns.HEADER_HEIGHT + ns.HEADER_GAP
+			local originY = inset + ns.HEADER_HEIGHT + ns.HEADER_GAP
 			for s = 1, #slots do
 				usedButtons = usedButtons + 1
 				local button = AcquireButton(content, usedButtons)
@@ -541,9 +611,9 @@ local function LayoutSections()
 				button:ClearAllPoints()
 				button:SetPoint(
 					"TOPLEFT",
-					content,
+					cluster,
 					"TOPLEFT",
-					box.x + (col * stepX),
+					inset + (col * stepX),
 					-(originY + (itemRow * stepY))
 				)
 			end
@@ -557,24 +627,22 @@ local function LayoutSections()
 	for i = headerIndex + 1, #headers do
 		headers[i]:Hide()
 	end
+	for i = headerIndex + 1, #clusters do
+		clusters[i]:Hide()
+	end
 	for i = usedButtons + 1, #buttons do
 		buttons[i]:Hide()
 	end
 
 	local window = ns.GetWindow()
 	if window then
-		local pad = window.PAD or 8
-		local width = (pad * 2) + contentWidth
-		if width < 186 then
-			width = 186
-		end
+		local width = WindowWidth(contentWidth)
 		window.itemHeight = offsetY
 		local footer = window.BOTTOM_BAR or 24
 		if ns.LayoutFooter then
 			footer = ns.LayoutFooter(width)
 		end
-		local height = (window.TOP_BAR or 36) + offsetY + footer
-		ns.SetWindowSize(width, height)
+		ns.SetWindowSize(width, WindowHeight(offsetY, footer))
 	end
 
 	if ns.ApplySearchKeywords then

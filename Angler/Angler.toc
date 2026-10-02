@@ -1,4 +1,4 @@
-## Interface: 120105
+## Interface: 16001
 ## Title: Angler
 ## Notes: Double-right-click to fish, lure menu, background sound. /an to toggle.
 ## Author: tobarisu1
