@@ -100,6 +100,61 @@ function ns.CurrentCharacter()
 	return name
 end
 
+local function MapType(name)
+	local types = Enum and Enum.UIMapType
+	if types and types[name] ~= nil then
+		return types[name]
+	end
+	if name == "Zone" then
+		return 3
+	elseif name == "Continent" then
+		return 2
+	elseif name == "World" then
+		return 1
+	elseif name == "Cosmic" then
+		return 0
+	end
+	return nil
+end
+
+-- Best-map is often a cave or town. Walk up to the zone so the log matches the home grid.
+local function ParentZone(mapID)
+	if not mapID or not C_Map or not C_Map.GetMapInfo then
+		return mapID, nil
+	end
+	local zoneType = MapType("Zone")
+	local continentType = MapType("Continent")
+	local worldType = MapType("World")
+	local cosmicType = MapType("Cosmic")
+	local guard = 0
+	local firstID, firstName
+	while mapID and guard < 8 do
+		guard = guard + 1
+		local ok, info = pcall(C_Map.GetMapInfo, mapID)
+		if not ok or type(info) ~= "table" then
+			break
+		end
+		local infoName = ns.PlainString(info.name)
+		local mapType = ns.PlainNumber(info.mapType)
+		local parent = ns.PlainNumber(info.parentMapID)
+		if not firstID then
+			firstID = mapID
+			firstName = infoName
+		end
+		if mapType == zoneType then
+			return mapID, infoName
+		end
+		if mapType == continentType or mapType == worldType or mapType == cosmicType then
+			break
+		end
+		if not parent or parent == mapID then
+			break
+		end
+		mapID = parent
+	end
+	return firstID, firstName
+end
+
 function ns.CurrentPlace()
 	local kind = "world"
 	local name
@@ -132,10 +187,13 @@ function ns.CurrentPlace()
 				mapID = ns.PlainNumber(id)
 			end
 		end
-		if mapID and C_Map.GetMapInfo then
-			local ok, info = pcall(C_Map.GetMapInfo, mapID)
-			if ok and type(info) == "table" then
-				name = ns.PlainString(info.name)
+		if mapID then
+			local zoneID, zoneName = ParentZone(mapID)
+			if zoneID then
+				mapID = zoneID
+			end
+			if zoneName then
+				name = zoneName
 			end
 		end
 		if not name and GetZoneText then

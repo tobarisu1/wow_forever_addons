@@ -266,6 +266,28 @@ local function ApplyDialogScale(frame)
 	end
 end
 
+-- Guild and community share CommunitiesFrame. Scale only, so minimize
+-- and maximize keep the sizes Blizzard just applied.
+local function ApplyCommunitiesScale()
+	local frame = CommunitiesFrame
+	if not frame then
+		return
+	end
+	SnapshotSize(frame)
+	local orig = frameSizes[frame]
+	if not orig then
+		return
+	end
+	if IsEnabled() then
+		frame:SetScale(FRAME_SCALE)
+	else
+		frame:SetScale(orig.scale or 1)
+	end
+	if frame:IsShown() and UpdateUIPanelPositions then
+		UpdateUIPanelPositions(frame)
+	end
+end
+
 local function SnapshotTargets()
 	SnapshotSize(QuestFrame)
 	SnapshotSize(GossipFrame)
@@ -273,6 +295,7 @@ local function SnapshotTargets()
 	SnapshotSize(MailFrame)
 	SnapshotSize(OpenMailFrame)
 	SnapshotSize(ItemTextFrame)
+	SnapshotSize(CommunitiesFrame)
 end
 
 local function ApplyFrameSizes()
@@ -282,6 +305,7 @@ local function ApplyFrameSizes()
 	ApplyDialogScale(MailFrame)
 	ApplyDialogScale(OpenMailFrame)
 	ApplyReadingScale(ItemTextFrame)
+	ApplyCommunitiesScale()
 	if ns.ApplyCharacterWindow then
 		ns.ApplyCharacterWindow()
 	end
@@ -400,6 +424,7 @@ local trackerDialog
 local headerBgOriginal = {}
 local trackerOrig = {}
 local trackerFader
+local applyingTracker
 
 local TRACKER_WIDTH = 200
 local TRACKER_IDLE_ALPHA = 0.4
@@ -482,14 +507,30 @@ local function EnsureTrackerFader()
 	end)
 end
 
+local function RestoreTrackerFrame()
+	if trackerOrig.width then
+		ObjectiveTrackerFrame:SetWidth(trackerOrig.width)
+	end
+	if trackerOrig.alpha then
+		ObjectiveTrackerFrame:SetAlpha(trackerOrig.alpha)
+	else
+		ObjectiveTrackerFrame:SetAlpha(1)
+	end
+	SetTrackerHeaderArtShown(true)
+end
+
 local function ApplyTrackerDialog()
-	if not ObjectiveTrackerFrame then
+	if applyingTracker or not ObjectiveTrackerFrame then
 		return
 	end
+	applyingTracker = true
 	if trackerDialog then
 		trackerDialog:Hide()
 	end
-	if IsTrackerEnabled() and ObjectiveTrackerFrame:IsShown() then
+	if IsTrackerEnabled() then
+		if not ObjectiveTrackerFrame:IsShown() then
+			ObjectiveTrackerFrame:Show()
+		end
 		if trackerOrig.width == nil then
 			trackerOrig.width = ObjectiveTrackerFrame:GetWidth()
 			trackerOrig.alpha = ObjectiveTrackerFrame:GetAlpha()
@@ -498,17 +539,18 @@ local function ApplyTrackerDialog()
 		HideTrackerArt(ObjectiveTrackerFrame)
 		SetTrackerHeaderArtShown(false)
 		EnsureTrackerFader()
+	elseif IsEnabled() then
+		-- The quest list only. Minimap and world map markers are separate frames.
+		if ObjectiveTrackerFrame:IsShown() then
+			ObjectiveTrackerFrame:Hide()
+		end
 	else
-		if trackerOrig.width then
-			ObjectiveTrackerFrame:SetWidth(trackerOrig.width)
+		RestoreTrackerFrame()
+		if not ObjectiveTrackerFrame:IsShown() then
+			ObjectiveTrackerFrame:Show()
 		end
-		if trackerOrig.alpha then
-			ObjectiveTrackerFrame:SetAlpha(trackerOrig.alpha)
-		else
-			ObjectiveTrackerFrame:SetAlpha(1)
-		end
-		SetTrackerHeaderArtShown(true)
 	end
+	applyingTracker = false
 end
 
 local function HookOnce(key, tryHook)
@@ -626,6 +668,15 @@ local function InstallHooks()
 		return true
 	end)
 
+	HookOnce("communitiesFrameShow", function()
+		if not CommunitiesFrame then
+			return false
+		end
+		CommunitiesFrame:HookScript("OnShow", OnDialogShow)
+		ApplyCommunitiesScale()
+		return true
+	end)
+
 	HookOnce("characterFrameShow", function()
 		if not CharacterFrame or not ns.ApplyCharacterWindow then
 			return false
@@ -676,14 +727,15 @@ local function InitDB()
 	if OldManQuesterDB.enabled == nil then
 		OldManQuesterDB.enabled = true
 	end
-	if OldManQuesterDB.trackerDialog == nil then
-		OldManQuesterDB.trackerDialog = true
+	if OldManQuesterDB.trackerDialog == nil or not OldManQuesterDB.trackerDefaultApplied then
+		OldManQuesterDB.trackerDialog = false
+		OldManQuesterDB.trackerDefaultApplied = true
 	end
 end
 
 local function PrintStatus()
 	Print("dialog " .. StatusText()
-		.. "  tracker " .. BoolText(IsTrackerEnabled()))
+		.. "  quest list " .. BoolText(IsTrackerEnabled()))
 end
 
 local function SetEnabled(enabled)
@@ -707,15 +759,15 @@ end
 local function SetTrackerEnabled(enabled)
 	OldManQuesterDB.trackerDialog = enabled
 	ApplyTrackerDialog()
-	Print("tracker " .. BoolText(IsTrackerEnabled()))
+	Print("quest list " .. BoolText(IsTrackerEnabled()))
 	if enabled and not IsEnabled() then
-		Print("Turn the addon on with /omq on to use the compact tracker.")
+		Print("Turn the addon on with /omq on to use the quest list.")
 	end
 end
 
 local function PrintMenu()
 	Print("/omq on | off | status")
-	print("/omq tracker on | off")
+	print("/omq tracker on | off  (quest list; map markers stay)")
 	PrintStatus()
 end
 

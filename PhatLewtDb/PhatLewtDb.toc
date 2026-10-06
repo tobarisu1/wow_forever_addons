@@ -11,4 +11,5 @@
 
 PhatLewtDb.lua
 Record.lua
+Places.lua
 Window.lua
