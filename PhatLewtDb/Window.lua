@@ -1,9 +1,12 @@
 local _, ns = ...
 
 local window
+local host
 local searchBox
 local scroll
 local content
+local columnHeader
+local viewButton
 local tagMenu
 local filterMenu
 local filterButton
@@ -11,14 +14,23 @@ local minimapButton
 local docked = false
 local pool = {}
 local used = 0
-local expandedZones = {}
+local cardPool = {}
+local cardsUsed = 0
+local headerPool = {}
+local headersUsed = 0
 local expandedItems = {}
 local refreshing = false
+local view = "home"
+local selectedName
 local HideTagMenu
+
+local CARD_W = 116
+local CARD_H = 132
+local CARD_GAP = 8
+local ART_H = 64
 
 local PAD = 12
 local ROW_H = 22
-local ZONE_H = 28
 local ICON = 18
 local COLUMN_GAP = 4
 local COLUMN_RIGHT = 2
@@ -89,13 +101,39 @@ local function RestorePosition()
 	end
 end
 
-local function FocusCurrentZone()
-	expandedZones = {}
-	expandedItems = {}
-	local place = ns.CurrentPlace()
-	if place then
-		expandedZones[place.key] = true
+local function PlayClick()
+	if SOUNDKIT and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON and PlaySound then
+		pcall(PlaySound, SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
 	end
+end
+
+local function SetWindowTitle(text)
+	if not window then
+		return
+	end
+	if window.SetTitle then
+		window:SetTitle(text)
+	elseif window.TitleContainer and window.TitleContainer.TitleText then
+		window.TitleContainer.TitleText:SetText(text)
+	end
+end
+
+local function ShowCurrentZone()
+	local place = ns.CurrentPlace()
+	expandedItems = {}
+	if not place then
+		view = "home"
+		selectedName = nil
+		return
+	end
+	selectedName = place.name
+	view = "zone"
+end
+
+local function ShowHome()
+	view = "home"
+	selectedName = nil
+	expandedItems = {}
 end
 
 local function ZoneTitle(zone)
@@ -238,18 +276,6 @@ local function MobMatches(mob, query)
 	return string.find(name, query, 1, true) ~= nil
 end
 
-local function ZoneMatches(zone, query)
-	if query == "" then
-		return false
-	end
-	local name = string.lower(zone.name or "")
-	if string.find(name, query, 1, true) then
-		return true
-	end
-	local kind = string.lower(zone.kind or "")
-	return string.find(kind, query, 1, true) ~= nil
-end
-
 local function SourceRate(source)
 	if not source.opens or source.opens < 1 then
 		return 0
@@ -328,33 +354,150 @@ local function ZoneItems(zone, query, zoneMatch)
 	return list
 end
 
-local function ZoneRows(query)
-	local place = ns.CurrentPlace()
-	local list = {}
-	local seen = {}
+local GROUP_ORDER = { "world", "dungeon", "raid", "other" }
+local GROUP_LABEL = {
+	world = "Zones",
+	dungeon = "Dungeons",
+	raid = "Raids",
+	other = "Other",
+}
+
+local function Lower(text)
+	return string.lower(text or "")
+end
+
+local function NamesMatch(a, b)
+	if not a or a == "" or not b or b == "" then
+		return false
+	end
+	return Lower(a) == Lower(b)
+end
+
+local function PlaceHit(place, name)
+	if NamesMatch(place.name, name) then
+		return true
+	end
+	local aliases = place.aliases
+	if type(aliases) ~= "table" then
+		return false
+	end
+	for i = 1, #aliases do
+		if NamesMatch(aliases[i], name) then
+			return true
+		end
+	end
+	return false
+end
+
+local function SavedByName()
+	local map = {}
 	local zones = PhatLewtDbDB and PhatLewtDbDB.zones or {}
 	for key, zone in pairs(zones) do
-		if type(key) == "string" and type(zone) == "table" then
-			seen[key] = true
-			list[#list + 1] = { key = key, zone = zone }
+		if type(key) == "string" and type(zone) == "table" and type(zone.name) == "string" then
+			local savedName = Lower(zone.name)
+			if not map[savedName] then
+				map[savedName] = { key = key, zone = zone }
+			end
 		end
 	end
-	if query == "" and place and not seen[place.key] then
-		list[#list + 1] = {
-			key = place.key,
-			zone = { name = place.name, kind = place.kind, mobs = {} },
-			virtual = true,
+	return map
+end
+
+local function SavedForPlace(spec, saved)
+	local exact = saved[Lower(spec.name)]
+	if exact then
+		return exact
+	end
+	if type(spec.aliases) ~= "table" then
+		return nil
+	end
+	for i = 1, #spec.aliases do
+		local match = saved[Lower(spec.aliases[i])]
+		if match then
+			return match
+		end
+	end
+	return nil
+end
+
+local function CollectCards()
+	local saved = SavedByName()
+	local used = {}
+	local place = ns.CurrentPlace()
+	local zones = PhatLewtDbDB and PhatLewtDbDB.zones or {}
+	local cards = {}
+	local list = ns.PLACES or {}
+	for i = 1, #list do
+		local spec = list[i]
+		local match = SavedForPlace(spec, saved)
+		local here = place and PlaceHit(spec, place.name)
+		local key
+		local zone
+		if match then
+			key = match.key
+			zone = match.zone
+			used[match.key] = true
+		elseif here and place then
+			key = place.key
+			zone = zones[place.key] or { name = spec.name, kind = spec.kind, mobs = {} }
+			used[place.key] = true
+		else
+			key = "place:" .. Lower(spec.name)
+			zone = { name = spec.name, kind = spec.kind, mobs = {} }
+		end
+		local art = spec.art
+		if (type(art) ~= "string" or art == "") and type(ns.PLACE_ART) == "table" then
+			art = ns.PLACE_ART[spec.name]
+		end
+		cards[#cards + 1] = {
+			key = key,
+			name = spec.name,
+			kind = spec.kind,
+			aliases = spec.aliases,
+			art = art,
+			zone = zone,
+			here = here and true or false,
+			listed = true,
 		}
 	end
-	table.sort(list, function(a, b)
-		local aCurrent = place and a.key == place.key
-		local bCurrent = place and b.key == place.key
-		if aCurrent ~= bCurrent then
-			return aCurrent and true or false
+	for key, zone in pairs(zones) do
+		if type(key) == "string" and type(zone) == "table" and not used[key] then
+			cards[#cards + 1] = {
+				key = key,
+				name = zone.name or "Unknown",
+				kind = zone.kind or "world",
+				art = nil,
+				zone = zone,
+				here = place and key == place.key or false,
+				listed = false,
+			}
+			used[key] = true
 		end
-		return string.lower(a.zone.name or "") < string.lower(b.zone.name or "")
-	end)
-	return list
+	end
+	if place and not used[place.key] then
+		cards[#cards + 1] = {
+			key = place.key,
+			name = place.name,
+			kind = place.kind,
+			art = nil,
+			zone = zones[place.key] or { name = place.name, kind = place.kind, mobs = {} },
+			here = true,
+			listed = false,
+		}
+	end
+	return cards
+end
+
+local function CardForName(cards, name)
+	if not name then
+		return nil
+	end
+	for i = 1, #cards do
+		if PlaceHit(cards[i], name) then
+			return cards[i]
+		end
+	end
+	return nil
 end
 
 local function SetLineFont(text, size, fontObject)
@@ -470,14 +613,7 @@ local function AcquireRow()
 		if not payload then
 			return
 		end
-		if button == "LeftButton" and payload.kind == "zone" then
-			if expandedZones[payload.key] then
-				expandedZones[payload.key] = nil
-			else
-				expandedZones[payload.key] = true
-			end
-			ns.RefreshList()
-		elseif button == "LeftButton" and payload.kind == "item" then
+		if button == "LeftButton" and payload.kind == "item" then
 			local id = payload.zoneKey .. ":" .. payload.itemID
 			if expandedItems[id] then
 				expandedItems[id] = nil
@@ -643,126 +779,452 @@ local function LayoutColumns(row, left, rate, seen, qty, tag)
 	row.name:SetPoint("RIGHT", row, "RIGHT", nameRight - COLUMN_GAP, 0)
 end
 
+local KIND_ICON = {
+	world = "Interface\\Icons\\INV_Misc_Map_01",
+	dungeon = "Interface\\Icons\\INV_Misc_Key_03",
+	raid = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
+}
+
+local function ContentWidth()
+	local width = scroll and scroll:GetWidth() or 360
+	if width < 40 then
+		width = 360
+	end
+	return width
+end
+
+local function AnchorScroll()
+	if not scroll or not host then
+		return
+	end
+	local top = -(PAD + 48)
+	if view == "home" then
+		top = -(PAD + 30)
+	end
+	scroll:ClearAllPoints()
+	scroll:SetPoint("TOPLEFT", host, "TOPLEFT", PAD, top)
+	scroll:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -22, PAD)
+end
+
+local function ApplyChrome()
+	AnchorScroll()
+	if viewButton then
+		if view == "home" then
+			viewButton:SetText("Here")
+		else
+			viewButton:SetText("Zones")
+		end
+	end
+	if columnHeader then
+		if view == "home" then
+			columnHeader:Hide()
+		else
+			columnHeader:Show()
+		end
+	end
+	if view == "home" then
+		SetWindowTitle("PhatLewt")
+	end
+end
+
+local function HideAllCards()
+	cardsUsed = 0
+	for i = 1, #cardPool do
+		cardPool[i]:Hide()
+		cardPool[i].payload = nil
+	end
+end
+
+local function HideAllHeaders()
+	headersUsed = 0
+	for i = 1, #headerPool do
+		headerPool[i]:Hide()
+	end
+end
+
+local function HideSpareHeaders()
+	for i = headersUsed + 1, #headerPool do
+		headerPool[i]:Hide()
+	end
+end
+
+local function AcquireHeader()
+	headersUsed = headersUsed + 1
+	local header = headerPool[headersUsed]
+	if header then
+		header:Show()
+		return header
+	end
+	header = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	header:SetJustifyH("LEFT")
+	header:SetTextColor(1, 0.82, 0)
+	headerPool[headersUsed] = header
+	return header
+end
+
+local function ScrollWheel(_, delta)
+	if not scroll then
+		return
+	end
+	local nextScroll = scroll:GetVerticalScroll() - (delta * (ROW_H * 3))
+	local range = scroll:GetVerticalScrollRange()
+	if nextScroll < 0 then
+		nextScroll = 0
+	elseif nextScroll > range then
+		nextScroll = range
+	end
+	scroll:SetVerticalScroll(nextScroll)
+end
+
+local function ApplyCardArt(card, entry)
+	local path = entry.art
+	card.art:SetTexCoord(0, 1, 0, 1)
+	if type(path) == "string" and path ~= "" then
+		local ok = card.art:SetTexture(path)
+		if ok ~= false then
+			card.art:SetTexCoord(0.02, 0.98, 0.08, 0.82)
+			card.art:Show()
+			card.icon:Hide()
+			return
+		end
+	end
+	card.art:SetTexture("Interface\\QuestFrame\\QuestBG")
+	card.art:SetTexCoord(0.04, 0.58, 0.04, 0.42)
+	card.art:Show()
+	card.icon:SetTexture(KIND_ICON[entry.kind] or "Interface\\Icons\\INV_Misc_QuestionMark")
+	card.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	card.icon:Show()
+end
+
+local function PaintCard(card, entry, count)
+	ApplyCardArt(card, entry)
+	card.name:SetText(entry.name)
+	if entry.here then
+		card.name:SetTextColor(0.45, 0.24, 0.02)
+		card:SetBackdropBorderColor(1, 0.82, 0, 1)
+	else
+		card.name:SetTextColor(0.22, 0.1, 0.02)
+		card:SetBackdropBorderColor(0.55, 0.42, 0.24, 1)
+	end
+	local detail = ZoneDetail(count)
+	if entry.here then
+		detail = "Here · " .. detail
+	end
+	card.detail:SetText(detail)
+	if entry.here then
+		card.detail:SetTextColor(0.45, 0.28, 0.05)
+	else
+		card.detail:SetTextColor(0.35, 0.24, 0.14)
+	end
+end
+
+local function AcquireCard()
+	cardsUsed = cardsUsed + 1
+	local card = cardPool[cardsUsed]
+	if card then
+		card:Show()
+		return card
+	end
+	card = CreateFrame("Button", nil, content, "BackdropTemplate")
+	card:SetSize(CARD_W, CARD_H)
+	card:RegisterForClicks("LeftButtonUp")
+	card:SetBackdrop({
+		bgFile = "Interface\\QuestFrame\\QuestBG",
+		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+		edgeSize = 12,
+		insets = { left = 3, right = 3, top = 3, bottom = 3 },
+	})
+	card:SetBackdropColor(1, 1, 1, 1)
+	card.art = card:CreateTexture(nil, "ARTWORK")
+	card.art:SetPoint("TOPLEFT", 8, -8)
+	card.art:SetSize(CARD_W - 16, ART_H)
+	card.icon = card:CreateTexture(nil, "OVERLAY")
+	card.icon:SetSize(36, 36)
+	card.icon:SetPoint("CENTER", card.art, "CENTER", 0, 0)
+	card.name = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	card.name:SetPoint("TOPLEFT", card.art, "BOTTOMLEFT", 0, -4)
+	card.name:SetPoint("TOPRIGHT", card.art, "BOTTOMRIGHT", 0, -4)
+	card.name:SetHeight(28)
+	card.name:SetJustifyH("CENTER")
+	card.name:SetJustifyV("TOP")
+	card.name:SetWordWrap(true)
+	if card.name.SetMaxLines then
+		card.name:SetMaxLines(2)
+	end
+	SetLineFont(card.name, 11, "GameFontHighlightSmall")
+	card.detail = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	card.detail:SetPoint("BOTTOM", 0, 8)
+	card.detail:SetWidth(CARD_W - 16)
+	card.detail:SetJustifyH("CENTER")
+	card.detail:SetWordWrap(false)
+	SetLineFont(card.detail, 10, "GameFontDisableSmall")
+	card:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+	local highlight = card:GetHighlightTexture()
+	if highlight then
+		highlight:SetAllPoints()
+	end
+	card:EnableMouseWheel(true)
+	card:SetScript("OnMouseWheel", ScrollWheel)
+	card:SetScript("OnClick", function(self)
+		HideTagMenu()
+		local payload = self.payload
+		if not payload then
+			return
+		end
+		selectedName = payload.name
+		view = "zone"
+		expandedItems = {}
+		PlayClick()
+		ns.RefreshList()
+		if scroll then
+			scroll:SetVerticalScroll(0)
+		end
+	end)
+	card:SetScript("OnEnter", function(self)
+		local payload = self.payload
+		if not payload then
+			return
+		end
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText(payload.name)
+		if payload.here then
+			GameTooltip:AddLine("You are here", 1, 0.82, 0)
+		end
+		GameTooltip:Show()
+	end)
+	card:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+	cardPool[cardsUsed] = card
+	return card
+end
+
+local function CardMatchesQuery(card, query)
+	if query == "" then
+		return true
+	end
+	if string.find(Lower(card.name), query, 1, true) then
+		return true
+	end
+	if type(card.aliases) == "table" then
+		for i = 1, #card.aliases do
+			if string.find(Lower(card.aliases[i]), query, 1, true) then
+				return true
+			end
+		end
+	end
+	if string.find(Lower(card.kind), query, 1, true) then
+		return true
+	end
+	local label = "other"
+	if card.listed and GROUP_LABEL[card.kind] then
+		label = GROUP_LABEL[card.kind]
+	end
+	return string.find(Lower(label), query, 1, true) ~= nil
+end
+
+local function GroupOf(card)
+	if not card.listed then
+		return "other"
+	end
+	if GROUP_LABEL[card.kind] then
+		return card.kind
+	end
+	return "other"
+end
+
+local function NoteRow(y, text)
+	local note = AcquireRow()
+	note.payload = { kind = "note" }
+	PlaceRow(note, y, ROW_H)
+	HideArrow(note)
+	ShowIcon(note, nil, 0)
+	SetLineFont(note.name, 12, "GameFontHighlightSmall")
+	note.name:SetTextColor(0.5, 0.5, 0.5)
+	note.name:SetText(text)
+	LayoutText(note, 2, nil)
+	return y + ROW_H
+end
+
+local function FillItems(zone, zoneKey, y, query)
+	local items = ZoneItems(zone, query, false)
+	if #items == 0 then
+		local text = "Nothing has dropped here yet."
+		if query ~= "" or FiltersOn() then
+			text = "No drops match."
+		end
+		return NoteRow(y, text)
+	end
+	for n = 1, #items do
+		local entryItem = items[n]
+		local item = entryItem.item
+		local itemKey = zoneKey .. ":" .. entryItem.itemID
+		local showSources = expandedItems[itemKey]
+		local itemRow = AcquireRow()
+		itemRow.payload = {
+			kind = "item",
+			zoneKey = zoneKey,
+			itemID = entryItem.itemID,
+			link = item.link,
+		}
+		PlaceRow(itemRow, y, ROW_H)
+		ShowArrow(itemRow, showSources, 2)
+		ShowIcon(itemRow, ItemIcon(item, entryItem.itemID), 20)
+		SetLineFont(itemRow.name, 12, "GameFontHighlightSmall")
+		itemRow.name:SetTextColor(1, 1, 1)
+		itemRow.name:SetText(ItemText(item, entryItem.itemID))
+		local stats = {
+			count = entryItem.count,
+			quantity = entryItem.quantity,
+			quest = item.quest,
+			crafting = item.crafting,
+			reagent = item.reagent,
+		}
+		local rate, seen, qty, tag = ItemColumns(stats, entryItem.itemID, entryItem.opens)
+		LayoutColumns(itemRow, 42, rate, seen, qty, tag)
+		y = y + ROW_H
+		if showSources then
+			for s = 1, #entryItem.sources do
+				local source = entryItem.sources[s]
+				local sourceRow = AcquireRow()
+				sourceRow.payload = { kind = "source" }
+				PlaceRow(sourceRow, y, ROW_H)
+				HideArrow(sourceRow)
+				ShowIcon(sourceRow, nil, 0)
+				local sourceName = source.name
+				SetLineFont(sourceRow.name, 12, "GameFontHighlightSmall")
+				if source.boss then
+					sourceRow.name:SetTextColor(1, 1, 1)
+					sourceName = "|cffff8000" .. sourceName .. "|r"
+				else
+					sourceRow.name:SetTextColor(0.75, 0.75, 0.75)
+				end
+				sourceRow.name:SetText(sourceName)
+				local sourceStats = {
+					count = source.count,
+					quantity = source.quantity,
+				}
+				local sourceRate, sourceSeen, sourceQty = ItemColumns(sourceStats, nil, source.opens)
+				LayoutColumns(sourceRow, 42, sourceRate, sourceSeen, sourceQty, "")
+				y = y + ROW_H
+			end
+		end
+	end
+	return y
+end
+
+local function RefreshHome()
+	HideAllCards()
+	HideAllHeaders()
+	used = 0
+	local query = ns.GetSearchQuery()
+	local filtering = FiltersOn()
+	local width = ContentWidth()
+	content:SetWidth(width)
+	local cols = math.floor((width + CARD_GAP) / (CARD_W + CARD_GAP))
+	if cols < 1 then
+		cols = 1
+	elseif cols > 4 then
+		cols = 4
+	end
+	local buckets = {
+		world = {},
+		dungeon = {},
+		raid = {},
+		other = {},
+	}
+	local cards = CollectCards()
+	for i = 1, #cards do
+		local card = cards[i]
+		if CardMatchesQuery(card, query) then
+			local count = #ZoneItems(card.zone, "", false)
+			local show = (not filtering or count > 0 or card.here) and true or false
+			if show then
+				local group = GroupOf(card)
+				local list = buckets[group]
+				list[#list + 1] = { card = card, count = count }
+			end
+		end
+	end
+	local y = 4
+	local placed = 0
+	for g = 1, #GROUP_ORDER do
+		local group = GROUP_ORDER[g]
+		local list = buckets[group]
+		if #list > 0 then
+			table.sort(list, function(a, b)
+				return Lower(a.card.name) < Lower(b.card.name)
+			end)
+			local header = AcquireHeader()
+			header:ClearAllPoints()
+			header:SetPoint("TOPLEFT", content, "TOPLEFT", 2, -y)
+			header:SetText(GROUP_LABEL[group])
+			y = y + 20
+			local col = 0
+			for i = 1, #list do
+				local entry = list[i]
+				local button = AcquireCard()
+				button.payload = {
+					kind = "place",
+					name = entry.card.name,
+					here = entry.card.here,
+				}
+				button:ClearAllPoints()
+				button:SetPoint("TOPLEFT", content, "TOPLEFT", col * (CARD_W + CARD_GAP), -y)
+				PaintCard(button, entry.card, entry.count)
+				placed = placed + 1
+				col = col + 1
+				if col >= cols then
+					col = 0
+					y = y + CARD_H + CARD_GAP
+				end
+			end
+			if col ~= 0 then
+				y = y + CARD_H + CARD_GAP
+			end
+			y = y + 8
+		end
+	end
+	HideSpareHeaders()
+	if placed == 0 then
+		y = NoteRow(y, "No zones match.")
+	end
+	HideSpareRows()
+	content:SetHeight(math.max(y + 8, 1))
+end
+
+local function RefreshZone()
+	HideAllCards()
+	HideAllHeaders()
+	used = 0
+	local width = ContentWidth()
+	content:SetWidth(width)
+	local query = ns.GetSearchQuery()
+	local cards = CollectCards()
+	local card = CardForName(cards, selectedName)
+	local y = 4
+	if card then
+		SetWindowTitle(ZoneTitle({ name = card.name, kind = card.kind }))
+		y = FillItems(card.zone, card.key, y, query)
+	else
+		SetWindowTitle("PhatLewt")
+		y = NoteRow(y, "Pick a zone from the list.")
+	end
+	HideSpareRows()
+	content:SetHeight(math.max(y + 8, 1))
+end
+
 function ns.RefreshList()
 	if not window or not content or refreshing then
 		return
 	end
 	refreshing = true
-	used = 0
-	local query = ns.GetSearchQuery()
-	local searching = query ~= ""
-	local filtering = FiltersOn()
-	local width = scroll and scroll:GetWidth() or 360
-	if width < 40 then
-		width = 360
+	ApplyChrome()
+	if view == "home" then
+		RefreshHome()
+	else
+		RefreshZone()
 	end
-	content:SetWidth(width)
-	local y = 4
-	local zones = ZoneRows(query)
-	for i = 1, #zones do
-		local entry = zones[i]
-		local zone = entry.zone
-		local zoneMatch = searching and ZoneMatches(zone, query)
-		local items = ZoneItems(zone, query, zoneMatch)
-		local hideZone = #items == 0 and (filtering or (searching and not zoneMatch))
-		if hideZone then
-			-- This zone has nothing for the current search or filters.
-		else
-			local row = AcquireRow()
-			local openZone = expandedZones[entry.key]
-			row.payload = { kind = "zone", key = entry.key }
-			PlaceRow(row, y, ZONE_H)
-			ShowArrow(row, openZone, 2)
-			ShowIcon(row, nil, 0)
-			SetLineFont(row.name, 13, "GameFontNormal")
-			row.name:SetTextColor(1, 0.82, 0)
-			row.name:SetText(ZoneTitle(zone))
-			LayoutText(row, 20, ZoneDetail(#items))
-			y = y + ZONE_H
-			if openZone and #items == 0 then
-				local note = AcquireRow()
-				note.payload = { kind = "note" }
-				PlaceRow(note, y, ROW_H)
-				HideArrow(note)
-				ShowIcon(note, nil, 0)
-				SetLineFont(note.name, 12, "GameFontHighlightSmall")
-				note.name:SetTextColor(0.5, 0.5, 0.5)
-				note.name:SetText("Nothing has dropped here yet.")
-				LayoutText(note, 14, nil)
-				y = y + ROW_H
-			elseif openZone then
-				for n = 1, #items do
-					local entryItem = items[n]
-					local item = entryItem.item
-					local itemKey = entry.key .. ":" .. entryItem.itemID
-					local showSources = expandedItems[itemKey]
-					local itemRow = AcquireRow()
-					itemRow.payload = {
-						kind = "item",
-						zoneKey = entry.key,
-						itemID = entryItem.itemID,
-						link = item.link,
-					}
-					PlaceRow(itemRow, y, ROW_H)
-					ShowArrow(itemRow, showSources, 2)
-					ShowIcon(itemRow, ItemIcon(item, entryItem.itemID), 20)
-					SetLineFont(itemRow.name, 12, "GameFontHighlightSmall")
-					itemRow.name:SetTextColor(1, 1, 1)
-					itemRow.name:SetText(ItemText(item, entryItem.itemID))
-					local stats = {
-						count = entryItem.count,
-						quantity = entryItem.quantity,
-						quest = item.quest,
-						crafting = item.crafting,
-						reagent = item.reagent,
-					}
-					local rate, seen, qty, tag = ItemColumns(stats, entryItem.itemID, entryItem.opens)
-					LayoutColumns(itemRow, 42, rate, seen, qty, tag)
-					y = y + ROW_H
-					if showSources then
-						for s = 1, #entryItem.sources do
-							local source = entryItem.sources[s]
-							local sourceRow = AcquireRow()
-							sourceRow.payload = { kind = "source" }
-							PlaceRow(sourceRow, y, ROW_H)
-							HideArrow(sourceRow)
-							ShowIcon(sourceRow, nil, 0)
-							local sourceName = source.name
-							SetLineFont(sourceRow.name, 12, "GameFontHighlightSmall")
-							if source.boss then
-								sourceRow.name:SetTextColor(1, 1, 1)
-								sourceName = "|cffff8000" .. sourceName .. "|r"
-							else
-								sourceRow.name:SetTextColor(0.75, 0.75, 0.75)
-							end
-							sourceRow.name:SetText(sourceName)
-							local sourceStats = {
-								count = source.count,
-								quantity = source.quantity,
-							}
-							local sourceRate, sourceSeen, sourceQty = ItemColumns(sourceStats, nil, source.opens)
-							LayoutColumns(sourceRow, 42, sourceRate, sourceSeen, sourceQty, "")
-							y = y + ROW_H
-						end
-					end
-				end
-			end
-		end
-	end
-	if used == 0 then
-		local note = AcquireRow()
-		note.payload = { kind = "note" }
-		PlaceRow(note, y, ROW_H)
-		HideArrow(note)
-		ShowIcon(note, nil, 0)
-		SetLineFont(note.name, 12, "GameFontHighlightSmall")
-		note.name:SetTextColor(0.5, 0.5, 0.5)
-		note.name:SetText("No drops match.")
-		LayoutText(note, 2, nil)
-		y = y + ROW_H
-	end
-	HideSpareRows()
-	content:SetHeight(math.max(y + 8, 1))
 	refreshing = false
 end
 
@@ -909,9 +1371,7 @@ function ns.ShowWindow()
 		return
 	end
 	window:Show()
-	if ns.GetSearchQuery() == "" then
-		FocusCurrentZone()
-	end
+	ShowCurrentZone()
 	ns.RefreshList()
 	if scroll then
 		scroll:SetVerticalScroll(0)
@@ -991,11 +1451,42 @@ function ns.InitWindow()
 	end
 	tinsert(UISpecialFrames, "PhatLewtDbFrame")
 
-	local host = window.Inset or window
+	host = window.Inset or window
 	searchBox = CreateFrame("EditBox", "PhatLewtDbSearchBox", host, "SearchBoxTemplate")
 	searchBox:SetHeight(20)
 	searchBox:SetPoint("TOPLEFT", host, "TOPLEFT", PAD, -PAD)
-	searchBox:SetPoint("TOPRIGHT", host, "TOPRIGHT", -(PAD + 32), -PAD)
+	searchBox:SetPoint("TOPRIGHT", host, "TOPRIGHT", -(PAD + 108), -PAD)
+
+	viewButton = CreateFrame("Button", nil, host, "UIPanelButtonTemplate")
+	viewButton:SetSize(70, 22)
+	viewButton:SetPoint("TOPRIGHT", host, "TOPRIGHT", -(PAD + 32), -(PAD - 1))
+	viewButton:SetText("Zones")
+	viewButton:SetScript("OnClick", function()
+		PlayClick()
+		if view == "home" then
+			ShowCurrentZone()
+		else
+			ShowHome()
+		end
+		ns.RefreshList()
+		if scroll then
+			scroll:SetVerticalScroll(0)
+		end
+	end)
+	viewButton:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		if view == "home" then
+			GameTooltip:SetText("Here")
+			GameTooltip:AddLine("Open the zone you are in", 1, 1, 1)
+		else
+			GameTooltip:SetText("Zones")
+			GameTooltip:AddLine("All zones and dungeons", 1, 1, 1)
+		end
+		GameTooltip:Show()
+	end)
+	viewButton:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
 
 	filterButton = CreateFrame("Button", nil, host)
 	filterButton:SetSize(26, 26)
@@ -1092,18 +1583,11 @@ function ns.InitWindow()
 		check:SetHitRectInsets(0, -(18 + 6 + labelWidth), 0, 0)
 		check.filterID = spec.id
 		check:SetScript("OnClick", function(self)
-			local wasFiltering = FiltersOn()
 			local on = self:GetChecked() and true or false
 			if on then
 				PhatLewtDbDB.filters[self.filterID] = true
 			else
 				PhatLewtDbDB.filters[self.filterID] = nil
-			end
-			if FiltersOn() and not wasFiltering then
-				expandedZones = {}
-				expandedItems = {}
-			elseif not on and not FiltersOn() and ns.GetSearchQuery() == "" then
-				FocusCurrentZone()
 			end
 			if GameTooltip.GetOwner and GameTooltip:GetOwner() == filterButton then
 				filterButton:GetScript("OnEnter")(filterButton)
@@ -1117,7 +1601,7 @@ function ns.InitWindow()
 	end
 	local columnY = -(PAD + 26)
 
-	local columnHeader = CreateFrame("Frame", nil, host)
+	columnHeader = CreateFrame("Frame", nil, host)
 	columnHeader:SetPoint("TOPLEFT", host, "TOPLEFT", PAD, columnY)
 	columnHeader:SetPoint("TOPRIGHT", host, "TOPRIGHT", -(PAD + 16), columnY)
 	columnHeader:SetHeight(16)
@@ -1134,19 +1618,10 @@ function ns.InitWindow()
 	end
 	searchBox:SetAutoFocus(false)
 	searchBox:SetMaxLetters(40)
-	local lastQuery = ""
 	searchBox:SetScript("OnTextChanged", function(self)
 		if SearchBoxTemplate_OnTextChanged then
 			SearchBoxTemplate_OnTextChanged(self)
 		end
-		local query = ns.GetSearchQuery()
-		if query ~= "" and lastQuery == "" then
-			expandedZones = {}
-			expandedItems = {}
-		elseif query == "" and lastQuery ~= "" then
-			FocusCurrentZone()
-		end
-		lastQuery = query
 		ns.RefreshList()
 	end)
 	searchBox:SetScript("OnEscapePressed", function(self)
@@ -1163,6 +1638,7 @@ function ns.InitWindow()
 	end
 	searchBox:SetFrameLevel(contentLevel)
 	filterButton:SetFrameLevel(contentLevel)
+	viewButton:SetFrameLevel(contentLevel)
 	columnHeader:SetFrameLevel(contentLevel)
 	scroll:SetFrameLevel(contentLevel)
 	content = CreateFrame("Frame", nil, scroll)

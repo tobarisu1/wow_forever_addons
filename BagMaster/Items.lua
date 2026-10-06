@@ -28,6 +28,7 @@ ns.CATEGORIES = {
 	{ key = "consumable", title = "Consumable", icon = "Interface/Icons/INV_Potion_52" },
 	{ key = "weapon", title = "Weapon", icon = "Interface/Icons/INV_Sword_04" },
 	{ key = "armor", title = "Armor", icon = "Interface/Icons/INV_Chest_Chain" },
+	{ key = "tradeskill", title = "Tradeskill Items", icon = "Interface/Icons/INV_Hammer_20" },
 	{ key = "reagent", title = "Reagent", icon = "Interface/Icons/INV_Misc_Herb_07" },
 	{ key = "tradegoods", title = "Trade Goods", icon = "Interface/Icons/INV_Fabric_Silk_01" },
 	{ key = "recipe", title = "Recipe", icon = "Interface/Icons/INV_Scroll_03" },
@@ -46,6 +47,9 @@ local KEYWORDS = {
 	weapon = "weapon",
 	armor = "armor",
 	reagent = "reagent",
+	tradeskill = "tradeskill",
+	tool = "tradeskill",
+	tools = "tradeskill",
 	trade = "tradegoods",
 	tradegoods = "tradegoods",
 	recipe = "recipe",
@@ -99,6 +103,11 @@ function ns.ClassifySlot(bag, slot)
 	end
 	if entry.quality == QUALITY_POOR then
 		return "junk"
+	end
+	if type(BackendMaster) == "table" and type(BackendMaster.IsTradeskillItem) == "function" then
+		if BackendMaster.IsTradeskillItem(entry.itemID) then
+			return "tradeskill"
+		end
 	end
 	local classID
 	if C_Item and C_Item.GetItemInfoInstant then

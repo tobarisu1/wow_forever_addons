@@ -18,6 +18,7 @@ Pending addons live as design docs under `_future/` until they have a `.toc`. **
 Angler/                  double-right-click fishing, lure menu, background sound; /an
 BackendMaster/           shared bag and bank cache for other addons; /be
 BagMaster/               category bag window; reads BackendMaster; /bm
+BatsuitMaster/           five gear loadouts on a classic character sheet; /bsm
 CombatTextMaster/        ready alerts and incoming damage for rogue, warrior, priest, shaman; /ctm
 CursorTooltip/           mouse-cursor tooltips; /mtt on | off | status
 TooltipMaster/           item tooltip lines for kind and profession use; /tm
@@ -128,6 +129,19 @@ Enable **BackendMaster** as well, or BagMaster stays off.
 
 `/bagmaster` is an alias. On/off, layout, items, and window position are saved across `/reload` and logins. Drag the window to move it. Press B or the bag key to open it.
 
+## BatsuitMaster
+
+Five renameable loadouts on the old character sheet. The model wears the saved pieces. A slot can remember an item in your bags, your bank, or what you are wearing. **Suit Up** stays dark until every piece is in your bags or already equipped. A list on the right side of the sheet names anything still in the bank or missing, and that list scrolls. Drag an item onto a slot, or click a slot and pick from the list. Right-click a slot to clear it.
+
+Needs **BackendMaster**. The sheet uses the same enlarged character layout as OldManQuester, at 130% so it sits a little smaller, and keeps that frame’s own border. The gear button opens a scale slider from 70% to 140%. A round **BSM** button sits on the left edge of the minimap. Drag it to any side of the square.
+
+- `/bsm` — print the menu and open the sheet
+- `/bsm on` — show the sheet
+- `/bsm off` — hide the sheet
+- `/bsm status` — window, loadout name, and whether Suit Up is ready
+
+`/batsuitmaster` is an alias. Loadout names and pieces are saved per character. The window position is saved across `/reload` and logins.
+
 ## CombatTextMaster
 
 Shows gold ready text above your character, and the damage you take. The damage you deal stays as the game's numbers over your target. For now the list is rogue, warrior, priest, and shaman.
@@ -200,12 +214,12 @@ Nodes are stored account wide in `GatherMemoryDB`, so every character shares the
 
 ## OldManQuester
 
-Primarily for ultrawide (and if you are old and want to see easier). Keeps the default left-docked quest and gossip windows, but scales them up so they use more of the extra width and are easier to read. The character window is the old 384×512 sheet (portrait, side slots, model, stat boxes, resistances, bottom tabs) at that same scale. Scales the windowed map/quest log (L) to match; the fullscreen map stays normal size. Keeps the quest tracker compact, fully transparent, and faded until you mouse over it.
+Primarily for ultrawide (and if you are old and want to see easier). Keeps the default left-docked quest and gossip windows, but scales them up so they use more of the extra width and are easier to read. The guild and community window stays the native frame and uses that same scale, including its minimized size. The character window is the old 384×512 sheet (portrait, side slots, model, stat boxes, resistances, bottom tabs) at that same scale. Scales the windowed map/quest log (L) to match; the fullscreen map stays normal size. The on-screen quest list on the right stays hidden. Quest markers on the minimap and the world map stay. `/omq tracker on` shows that list again, compact and faded until you mouse over it.
 
 - `/omq` — print the menu and current state
 - `/omq on` — enable
 - `/omq off` — disable
-- `/omq tracker on | off` — compact transparent tracker
+- `/omq tracker on | off` — show or hide the on-screen quest list. Off by default. On is the compact list. Minimap and map markers stay either way.
 - `/omq status` — print dialog and tracker state
 
 `/oldmanquester` is an alias. The last on/off choices are saved across `/reload` and logins.

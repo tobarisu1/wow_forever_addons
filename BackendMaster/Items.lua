@@ -72,7 +72,37 @@ local function ItemQuality(itemID)
 	return nil
 end
 
-local function ItemClassID(itemID)
+local PROFESSION_CLASS = Enum and Enum.ItemClass and Enum.ItemClass.Profession
+local WEAPON_CLASS = Enum and Enum.ItemClass and Enum.ItemClass.Weapon
+local FISHING_POLE = Enum and Enum.ItemWeaponSubclass and Enum.ItemWeaponSubclass.Fishingpole
+if FISHING_POLE == nil then
+	FISHING_POLE = 20
+end
+local PROFESSION_TOOL = Enum and Enum.InventoryType and Enum.InventoryType.IndexProfessionToolType
+local PROFESSION_GEAR = Enum and Enum.InventoryType and Enum.InventoryType.IndexProfessionGearType
+if PROFESSION_TOOL == nil then
+	PROFESSION_TOOL = 29
+end
+if PROFESSION_GEAR == nil then
+	PROFESSION_GEAR = 30
+end
+
+-- These stay weapons or trade goods in the item data, but they exist to work a profession.
+local TOOL_IDS = {
+	[5956] = true, -- Blacksmith Hammer
+	[2901] = true, -- Mining Pick
+	[7005] = true, -- Skinning Knife
+	[6219] = true, -- Arclight Spanner
+	[10498] = true, -- Gyromatic Micro-Adjustor
+	[6218] = true, -- Runed Copper Rod
+	[6339] = true, -- Runed Silver Rod
+	[11130] = true, -- Runed Golden Rod
+	[11145] = true, -- Runed Truesilver Rod
+	[16207] = true, -- Runed Arcanite Rod
+	[9149] = true, -- Philosopher's Stone
+}
+
+local function ItemInstant(itemID)
 	if not C_Item or not C_Item.GetItemInfoInstant then
 		return nil
 	end
@@ -80,7 +110,50 @@ local function ItemClassID(itemID)
 	if not results[1] then
 		return nil
 	end
-	return PlainNumber(results[7])
+	return {
+		equipLoc = PlainString(results[5]),
+		classID = PlainNumber(results[7]),
+		subclassID = PlainNumber(results[8]),
+	}
+end
+
+local function ItemClassID(itemID)
+	local instant = ItemInstant(itemID)
+	if not instant then
+		return nil
+	end
+	return instant.classID
+end
+
+function BackendMaster.IsTradeskillItem(itemID)
+	itemID = PlainNumber(itemID)
+	if not itemID then
+		return false
+	end
+	if TOOL_IDS[itemID] then
+		return true
+	end
+	local instant = ItemInstant(itemID)
+	if instant then
+		if PROFESSION_CLASS ~= nil and instant.classID == PROFESSION_CLASS then
+			return true
+		end
+		local equipLoc = instant.equipLoc
+		if equipLoc == "INVTYPE_PROFESSION_TOOL" or equipLoc == "INVTYPE_PROFESSION_GEAR" then
+			return true
+		end
+		if WEAPON_CLASS ~= nil and instant.classID == WEAPON_CLASS and instant.subclassID == FISHING_POLE then
+			return true
+		end
+	end
+	if C_Item and C_Item.GetItemInventoryTypeByID then
+		local ok, invType = pcall(C_Item.GetItemInventoryTypeByID, itemID)
+		invType = ok and PlainNumber(invType)
+		if invType == PROFESSION_TOOL or invType == PROFESSION_GEAR then
+			return true
+		end
+	end
+	return false
 end
 
 local function IsCraftingReagent(itemID)
@@ -105,6 +178,9 @@ function BackendMaster.DescribeItem(itemID)
 	local classID = ItemClassID(itemID)
 	if classID ~= nil and QUEST_ITEM_CLASS ~= nil and classID == QUEST_ITEM_CLASS then
 		return { key = "quest", label = "Quest" }
+	end
+	if BackendMaster.IsTradeskillItem(itemID) then
+		return { key = "tradeskill", label = "Tradeskill Items" }
 	end
 	local described = CLASS_LABEL[classID]
 	if described then
