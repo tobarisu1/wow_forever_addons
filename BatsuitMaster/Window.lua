@@ -1010,7 +1010,20 @@ local function BuildWindow()
 		if ns.CanSuitUp() then
 			GameTooltip:AddLine("Wear this loadout and bag everything else.", 1, 1, 1)
 		else
-			GameTooltip:AddLine("Every piece has to be in your bags.", 1, 0.82, 0)
+			local pieces = ns.MissingPieces()
+			local noted = false
+			for i = 1, #pieces do
+				local piece = pieces[i]
+				if piece.where == "bank" then
+					GameTooltip:AddLine(piece.name .. " is in the bank.", 1, 0.82, 0)
+				else
+					GameTooltip:AddLine(piece.name .. " is not in your bags.", 1, 0.82, 0)
+				end
+				noted = true
+			end
+			if not noted then
+				GameTooltip:AddLine("Every piece has to be in your bags.", 1, 0.82, 0)
+			end
 		end
 		GameTooltip:Show()
 	end)

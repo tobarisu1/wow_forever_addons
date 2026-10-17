@@ -346,6 +346,202 @@ local function ApplyWorldMapScale()
 	end
 end
 
+local PARCHMENT_ATLAS = "QuestBG-Parchment"
+local MATERIAL_KEYS = {
+	"MaterialTopLeft",
+	"MaterialTopRight",
+	"MaterialBotLeft",
+	"MaterialBotRight",
+}
+
+local function HideMaterialTextures(frame)
+	if not frame then
+		return
+	end
+	for i = 1, #MATERIAL_KEYS do
+		local texture = frame[MATERIAL_KEYS[i]]
+		if texture and texture.Hide then
+			texture:Hide()
+		end
+	end
+end
+
+local function UseParchment(texture, useAtlasSize)
+	if not texture or not texture.SetAtlas then
+		return
+	end
+	texture:SetAtlas(PARCHMENT_ATLAS, useAtlasSize)
+	if texture.Show then
+		texture:Show()
+	end
+end
+
+local function ApplyQuestParchment()
+	if not IsEnabled() then
+		return
+	end
+	for i = 1, #QUEST_PANELS do
+		local panel = Named(QUEST_PANELS[i])
+		if panel then
+			UseParchment(panel.Bg, false)
+			HideMaterialTextures(panel)
+		end
+	end
+end
+
+local function ApplyGossipParchment()
+	if not IsEnabled() or not GossipFrame then
+		return
+	end
+	UseParchment(GossipFrame.Background, true)
+	if GossipFrame.GreetingPanel then
+		HideMaterialTextures(GossipFrame.GreetingPanel)
+	end
+end
+
+local function ApplyItemTextParchment()
+	if not IsEnabled() or not ItemTextFramePageBg then
+		return
+	end
+	HideMaterialTextures({
+		MaterialTopLeft = ItemTextMaterialTopLeft,
+		MaterialTopRight = ItemTextMaterialTopRight,
+		MaterialBotLeft = ItemTextMaterialBotLeft,
+		MaterialBotRight = ItemTextMaterialBotRight,
+	})
+	UseParchment(ItemTextFramePageBg, false)
+	local material = ItemTextGetMaterial and ItemTextGetMaterial()
+	if material == "ParchmentLarge" and ItemTextFrame then
+		ItemTextFramePageBg:SetSize(ItemTextFrame:GetWidth() - 39, ItemTextFrame:GetHeight() - 67)
+	else
+		ItemTextFramePageBg:SetSize(299, 357)
+	end
+end
+
+local function ApplyParchment()
+	ApplyQuestParchment()
+	ApplyGossipParchment()
+	ApplyItemTextParchment()
+end
+
+local questKeys
+
+local function ChatBoxOpen()
+	if ChatFrameUtil and ChatFrameUtil.GetActiveWindow then
+		return ChatFrameUtil.GetActiveWindow() ~= nil
+	end
+	if ChatEdit_GetActiveWindow then
+		return ChatEdit_GetActiveWindow() ~= nil
+	end
+	return false
+end
+
+local function PopupOpen()
+	for i = 1, 4 do
+		local popup = Named("StaticPopup" .. i)
+		if popup and popup:IsShown() then
+			return true
+		end
+	end
+	return false
+end
+
+local function ClickIfReady(button)
+	if not button or not button.IsVisible or not button:IsVisible() then
+		return false
+	end
+	if button.IsEnabled and not button:IsEnabled() then
+		return false
+	end
+	button:Click()
+	return true
+end
+
+local function RewardChoicePending()
+	if not GetNumQuestChoices or GetNumQuestChoices() <= 1 then
+		return false
+	end
+	local choice = QuestInfoFrame and QuestInfoFrame.itemChoice
+	return not choice or choice == 0
+end
+
+local function PressQuestConfirm()
+	if QuestFrameRewardPanel and QuestFrameRewardPanel:IsShown() then
+		if RewardChoicePending() then
+			return false
+		end
+		return ClickIfReady(QuestFrameCompleteQuestButton)
+	end
+	if QuestFrameProgressPanel and QuestFrameProgressPanel:IsShown() then
+		return ClickIfReady(QuestFrameCompleteButton)
+	end
+	if QuestFrameDetailPanel and QuestFrameDetailPanel:IsShown() then
+		return ClickIfReady(QuestFrameAcceptButton)
+	end
+	return false
+end
+
+local function PressQuestCancel()
+	if QuestFrameDetailPanel and QuestFrameDetailPanel:IsShown() then
+		if type(QuestDetailDeclineButton_OnClick) == "function" then
+			QuestDetailDeclineButton_OnClick()
+			return true
+		end
+	end
+	if QuestFrameProgressPanel and QuestFrameProgressPanel:IsShown() then
+		if type(QuestGoodbyeButton_OnClick) == "function" then
+			QuestGoodbyeButton_OnClick()
+			return true
+		end
+	end
+	if QuestFrame and QuestFrame:IsShown() and HideUIPanel then
+		HideUIPanel(QuestFrame)
+		return true
+	end
+	return false
+end
+
+local function OnQuestKey(self, key)
+	local handled = false
+	if IsEnabled() and QuestFrame and QuestFrame:IsShown() and not InCombatLockdown() and not ChatBoxOpen() and not PopupOpen() then
+		if key == "SPACE" then
+			handled = PressQuestConfirm()
+		elseif key == "ESCAPE" then
+			handled = PressQuestCancel()
+		end
+	end
+	if self.SetPropagateKeyboardInput then
+		self:SetPropagateKeyboardInput(not handled)
+	end
+end
+
+local function UpdateQuestKeys()
+	if not questKeys then
+		return
+	end
+	if IsEnabled() and QuestFrame and QuestFrame:IsShown() then
+		questKeys:Show()
+	else
+		questKeys:Hide()
+	end
+end
+
+local function EnsureQuestKeys()
+	if questKeys or not QuestFrame then
+		return
+	end
+	questKeys = OldManQuesterQuestKeys
+	if not questKeys then
+		questKeys = CreateFrame("Frame", nil, QuestFrame)
+		questKeys:EnableKeyboard(true)
+	else
+		questKeys:SetParent(QuestFrame)
+	end
+	questKeys:EnableKeyboard(true)
+	questKeys:SetScript("OnKeyDown", OnQuestKey)
+	questKeys:Hide()
+end
+
 local function ApplyAll()
 	if applying then
 		return
@@ -356,6 +552,8 @@ local function ApplyAll()
 	ApplyFontsOnFrame(QuestFrame)
 	ApplyFontsOnFrame(GossipFrame)
 	ApplyFontsOnFrame(CharacterFrame)
+	ApplyParchment()
+	UpdateQuestKeys()
 	if not IsEnabled() then
 		RestoreNamedWraps()
 	end
@@ -363,8 +561,12 @@ local function ApplyAll()
 end
 
 local function RefreshOpenDialogs()
-	if GossipFrame and GossipFrame:IsShown() and GossipFrame.Update then
-		GossipFrame:Update()
+	if GossipFrame and GossipFrame:IsShown() then
+		if GossipFrame.UpdateTheme then
+			GossipFrame:UpdateTheme()
+		elseif GossipFrame.Update then
+			GossipFrame:Update()
+		end
 	end
 	for i = 1, #QUEST_PANELS do
 		local panel = Named(QUEST_PANELS[i])
@@ -373,6 +575,10 @@ local function RefreshOpenDialogs()
 			panel:Show()
 		end
 	end
+	if ItemTextFrame and ItemTextFrame:IsShown() and type(ItemTextFrame_OnEvent) == "function" then
+		ItemTextFrame_OnEvent(ItemTextFrame, "ITEM_TEXT_READY")
+	end
+	UpdateQuestKeys()
 end
 
 local function OnGossipGreetingSetup(self)
@@ -406,6 +612,7 @@ end
 
 local function OnQuestFrameHide()
 	RestoreNamedWraps()
+	UpdateQuestKeys()
 end
 
 local TRACKER_MODULE_NAMES = {
@@ -620,12 +827,54 @@ local function InstallHooks()
 		return true
 	end)
 
+	HookOnce("questParchment", function()
+		if type(QuestFrame_SetMaterial) ~= "function" then
+			return false
+		end
+		hooksecurefunc("QuestFrame_SetMaterial", function(frame)
+			if not IsEnabled() or not frame then
+				return
+			end
+			UseParchment(frame.Bg, false)
+			HideMaterialTextures(frame)
+		end)
+		local function AfterPanelShow()
+			ApplyQuestParchment()
+		end
+		if type(QuestFrameDetailPanel_OnShow) == "function" then
+			hooksecurefunc("QuestFrameDetailPanel_OnShow", AfterPanelShow)
+		end
+		if type(QuestFrameProgressPanel_OnShow) == "function" then
+			hooksecurefunc("QuestFrameProgressPanel_OnShow", AfterPanelShow)
+		end
+		if type(QuestFrameRewardPanel_OnShow) == "function" then
+			hooksecurefunc("QuestFrameRewardPanel_OnShow", AfterPanelShow)
+		end
+		if type(QuestFrameGreetingPanel_OnShow) == "function" then
+			hooksecurefunc("QuestFrameGreetingPanel_OnShow", AfterPanelShow)
+		end
+		return true
+	end)
+
 	HookOnce("questFrameShow", function()
 		if not QuestFrame then
 			return false
 		end
+		EnsureQuestKeys()
 		QuestFrame:HookScript("OnShow", OnDialogShow)
 		QuestFrame:HookScript("OnHide", OnQuestFrameHide)
+		return true
+	end)
+
+	HookOnce("gossipParchment", function()
+		if not UIThemeContainerMixin or not UIThemeContainerMixin.UpdateBackground then
+			return false
+		end
+		hooksecurefunc(UIThemeContainerMixin, "UpdateBackground", function(self)
+			if self == GossipFrame then
+				ApplyGossipParchment()
+			end
+		end)
 		return true
 	end)
 
@@ -662,6 +911,9 @@ local function InstallHooks()
 			hooksecurefunc("ItemTextFrame_OnEvent", function(self, event)
 				if event == "ITEM_TEXT_READY" or event == "ITEM_TEXT_TRANSLATION" then
 					ApplyReadingScale(self)
+				end
+				if event == "ITEM_TEXT_READY" then
+					ApplyItemTextParchment()
 				end
 			end)
 		end
