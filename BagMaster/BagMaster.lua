@@ -73,6 +73,9 @@ function ns.SetEnabled(enabled)
 	if turningOff then
 		ns.HideWindow()
 	end
+	if ns.UpdateBlizzardBags then
+		ns.UpdateBlizzardBags()
+	end
 	if ns.RefreshBagHighlights then
 		ns.RefreshBagHighlights()
 	end

@@ -382,6 +382,18 @@ local function MerchantWillSell()
 	return ok and sell
 end
 
+local function BankWillDeposit()
+	local ok, deposit = pcall(function()
+		return BankFrame and BankFrame:IsShown() and BankFrame:GetActiveBankType() ~= nil
+	end)
+	return ok and deposit
+end
+
+-- Selling and depositing need Blizzard's click handler, not a secure "use item".
+local function BlizzardHandlesRightClick()
+	return MerchantWillSell() or BankWillDeposit()
+end
+
 local function ApplyRightClick(button)
 	if InCombatLockdown() then
 		return
@@ -390,7 +402,7 @@ local function ApplyRightClick(button)
 	button:SetAttribute("shift-type2", noop)
 	button:SetAttribute("ctrl-type2", noop)
 	button:SetAttribute("alt-type2", noop)
-	if MerchantWillSell() then
+	if BlizzardHandlesRightClick() then
 		button:SetAttribute("type2", nil)
 		button:SetAttribute("item2", nil)
 		return
@@ -429,7 +441,7 @@ local function AcquireButton(parent, index)
 			end
 			return
 		end
-		if mouseButton == "RightButton" and MerchantWillSell() and ContainerFrameItemButton_OnClick then
+		if mouseButton == "RightButton" and BlizzardHandlesRightClick() and ContainerFrameItemButton_OnClick then
 			ContainerFrameItemButton_OnClick(self, mouseButton)
 			return
 		end
@@ -665,6 +677,14 @@ function ns.RefreshBags()
 	if ns.UpdateMoney then
 		ns.UpdateMoney()
 	end
+end
+
+-- Secure item buttons can't be built in combat, so lay them out while hidden.
+function ns.PrepareBags()
+	if not ns.IsEnabled() or InCombatLockdown() then
+		return
+	end
+	LayoutSections()
 end
 
 function ns.InitLayout()

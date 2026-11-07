@@ -396,7 +396,88 @@ function TobarisuMap.UnregisterWidget(id)
 	ns.LayoutWidgets()
 end
 
+-- Opens whichever Group Finder this client ships: Mainline PVEFrame or the Classic LFG tool.
+local function ToggleGroupFinder()
+	if type(PVEFrame_ToggleFrame) == "function" then
+		PVEFrame_ToggleFrame()
+	elseif type(ToggleLFGParentFrame) == "function" then
+		ToggleLFGParentFrame()
+	elseif LFGMinimapFrame and LFGMinimapFrame.Click then
+		LFGMinimapFrame:Click()
+	elseif LFDMicroButton and LFDMicroButton.Click then
+		LFDMicroButton:Click()
+	else
+		ns.Print("Group Finder is not available on this client.")
+	end
+end
+
+local function GroupFinderLabel()
+	if type(DUNGEONS_BUTTON) == "string" and DUNGEONS_BUTTON ~= "" then
+		return DUNGEONS_BUTTON
+	end
+	return "Group Finder"
+end
+
+local function CreateGroupFinderButton()
+	local button = CreateFrame("Button", "TobarisuMapGroupFinderButton", UIParent)
+	button:SetSize(26, 26)
+	button:RegisterForClicks("LeftButtonUp")
+	button:SetFrameStrata("MEDIUM")
+
+	local disc = button:CreateTexture(nil, "BACKGROUND")
+	disc:SetAllPoints()
+	disc:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+	disc:SetVertexColor(0.08, 0.06, 0.04, 1)
+
+	local icon = button:CreateTexture(nil, "ARTWORK")
+	icon:SetSize(18, 18)
+	icon:SetPoint("CENTER")
+	icon:SetTexture("Interface\\Icons\\INV_Misc_GroupNeedMore")
+	icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+	-- The ring art sits in the top-left of the texture, so shift it onto the button.
+	local ring = button:CreateTexture(nil, "OVERLAY")
+	ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+	ring:SetSize(42, 42)
+	ring:SetPoint("CENTER", 8, -8)
+
+	button:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+	local highlight = button:GetHighlightTexture()
+	if highlight then
+		highlight:SetBlendMode("ADD")
+		highlight:ClearAllPoints()
+		highlight:SetPoint("CENTER")
+		highlight:SetSize(22, 22)
+	end
+
+	button:SetScript("OnClick", function()
+		if PlaySound and SOUNDKIT and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON then
+			PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+		end
+		ToggleGroupFinder()
+	end)
+	button:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+		GameTooltip:SetText(GroupFinderLabel())
+		GameTooltip:AddLine("Open the Group Finder", 1, 1, 1)
+		GameTooltip:AddLine("Drag around the map", 0.8, 0.8, 0.8)
+		GameTooltip:Show()
+	end)
+	button:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+	return button
+end
+
 function ns.InitWidgets()
+	if not ns.groupFinderButton then
+		ns.groupFinderButton = CreateGroupFinderButton()
+		TobarisuMap.RegisterWidget("GroupFinder", {
+			frame = ns.groupFinderButton,
+			edge = "SW",
+			size = 26,
+		})
+	end
 	ready = true
 	for i = 1, #pending do
 		local item = pending[i]

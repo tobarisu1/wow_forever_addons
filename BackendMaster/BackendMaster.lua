@@ -25,7 +25,7 @@ local function IsSecret(value)
 end
 
 local function PlainString(value)
-	if type(value) ~= "string" or value == "" or IsSecret(value) then
+	if type(value) ~= "string" or IsSecret(value) or value == "" then
 		return nil
 	end
 	return value

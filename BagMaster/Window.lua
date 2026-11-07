@@ -7,7 +7,6 @@ local moneyFrame
 local tokenFrame
 local hookedToggles = false
 local cacheHooked = false
-local originals = {}
 
 local TOP_BAR = 32
 local BOTTOM_BAR = 36
@@ -64,16 +63,32 @@ function ns.IsWindowShown()
 	return window and window:IsShown()
 end
 
-local function HideBlizzardBags()
+-- Hiding Blizzard's bags from addon code taints them, so park them under a hidden
+-- parent instead and let Blizzard show and hide them as usual.
+local hiddenParent = CreateFrame("Frame")
+hiddenParent:Hide()
+
+local function SetBlizzardBagParent(parent)
 	if ContainerFrameCombinedBags then
-		ContainerFrameCombinedBags:Hide()
+		ContainerFrameCombinedBags:SetParent(parent)
 	end
 	local count = NUM_CONTAINER_FRAMES or 13
 	for i = 1, count do
 		local frame = _G["ContainerFrame" .. i]
 		if frame then
-			frame:Hide()
+			frame:SetParent(parent)
 		end
+	end
+end
+
+function ns.UpdateBlizzardBags()
+	if InCombatLockdown() then
+		return
+	end
+	if ns.IsEnabled() then
+		SetBlizzardBagParent(hiddenParent)
+	else
+		SetBlizzardBagParent(UIParent)
 	end
 end
 
@@ -246,7 +261,6 @@ function ns.ShowWindow()
 	if not window then
 		return
 	end
-	HideBlizzardBags()
 	window:Show()
 	ns.RefreshBags()
 	UpdateMoney()
@@ -256,20 +270,42 @@ function ns.HideWindow()
 	if window then
 		window:Hide()
 	end
-	HideBlizzardBags()
 end
 
-local function WrapToggle(name, handler)
-	if originals[name] or type(_G[name]) ~= "function" then
+-- Replacing Blizzard's bag globals taints the bank, mail, and auction frames that call
+-- them, so only post-hook. Bag functions call each other, and post-hooks fire innermost
+-- first, so the outermost call writes last and its action wins.
+local pendingAction
+local actionQueued = false
+
+local function ApplyPendingAction()
+	actionQueued = false
+	local action = pendingAction
+	pendingAction = nil
+	if not action or not ns.IsEnabled() then
 		return
 	end
-	originals[name] = _G[name]
-	_G[name] = function(...)
-		if ns.IsEnabled() then
-			return handler(originals[name], ...)
-		end
-		return originals[name](...)
+	if action == "toggle" then
+		action = ns.IsWindowShown() and "hide" or "show"
 	end
+	if action == "show" then
+		ns.ShowWindow()
+	else
+		ns.HideWindow()
+	end
+end
+
+local function HookBagFunction(name, action)
+	if type(_G[name]) ~= "function" then
+		return
+	end
+	hooksecurefunc(name, function()
+		pendingAction = action
+		if not actionQueued then
+			actionQueued = true
+			C_Timer.After(0, ApplyPendingAction)
+		end
+	end)
 end
 
 local function HookCache()
@@ -293,50 +329,14 @@ local function HookBagToggles()
 		return
 	end
 	hookedToggles = true
-	if ContainerFrameCombinedBags then
-		ContainerFrameCombinedBags:HookScript("OnShow", function(self)
-			if ns.IsEnabled() then
-				self:Hide()
-			end
-		end)
-	end
-	local count = NUM_CONTAINER_FRAMES or 13
-	for i = 1, count do
-		local frame = _G["ContainerFrame" .. i]
-		if frame then
-			frame:HookScript("OnShow", function(self)
-				if ns.IsEnabled() then
-					self:Hide()
-				end
-			end)
-		end
-	end
-	WrapToggle("ToggleBackpack", function()
-		if ns.IsWindowShown() then
-			ns.HideWindow()
-		else
-			ns.ShowWindow()
-		end
-	end)
-	WrapToggle("ToggleAllBags", function()
-		if ns.IsWindowShown() then
-			ns.HideWindow()
-		else
-			ns.ShowWindow()
-		end
-	end)
-	WrapToggle("OpenAllBags", function()
-		ns.ShowWindow()
-	end)
-	WrapToggle("CloseAllBags", function()
-		ns.HideWindow()
-	end)
-	WrapToggle("OpenBackpack", function()
-		ns.ShowWindow()
-	end)
-	WrapToggle("CloseBackpack", function()
-		ns.HideWindow()
-	end)
+	ns.UpdateBlizzardBags()
+	HookBagFunction("ToggleAllBags", "toggle")
+	HookBagFunction("ToggleBackpack", "toggle")
+	HookBagFunction("ToggleBag", "toggle")
+	HookBagFunction("OpenAllBags", "show")
+	HookBagFunction("OpenBackpack", "show")
+	HookBagFunction("CloseAllBags", "hide")
+	HookBagFunction("CloseBackpack", "hide")
 end
 
 local function OnSearchChanged(self)
@@ -633,11 +633,20 @@ function ns.InitWindow()
 	HookCache()
 
 	window:SetScript("OnEvent", function(_, event)
+		if event == "PLAYER_REGEN_ENABLED" then
+			ns.UpdateBlizzardBags()
+		end
 		if not ns.IsEnabled() then
 			return
 		end
 		if event == "PLAYER_MONEY" or event == "CURRENCY_DISPLAY_UPDATE" then
 			ns.ReflowFooter()
+			return
+		end
+		if event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_ENTERING_WORLD" then
+			if not ns.IsWindowShown() then
+				ns.PrepareBags()
+			end
 			return
 		end
 		if ns.IsWindowShown() then
@@ -652,6 +661,8 @@ function ns.InitWindow()
 	window:RegisterEvent("QUEST_ACCEPTED")
 	window:RegisterEvent("UNIT_QUEST_LOG_CHANGED")
 	window:RegisterEvent("PLAYER_REGEN_ENABLED")
+	window:RegisterEvent("PLAYER_REGEN_DISABLED")
+	window:RegisterEvent("PLAYER_ENTERING_WORLD")
 	window:RegisterEvent("MERCHANT_SHOW")
 	window:RegisterEvent("MERCHANT_CLOSED")
 
