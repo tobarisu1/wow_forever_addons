@@ -34,6 +34,7 @@ AddNamedBag(BAGS, bagSet, "Bag_1", 1)
 AddNamedBag(BAGS, bagSet, "Bag_2", 2)
 AddNamedBag(BAGS, bagSet, "Bag_3", 3)
 AddNamedBag(BAGS, bagSet, "Bag_4", 4)
+AddNamedBag(BAGS, bagSet, "ReagentBag")
 
 for tab = 1, 9 do
 	AddNamedBag(BANK, bankSet, "CharacterBankTab_" .. tab)
@@ -82,7 +83,7 @@ local function PlainNumber(value)
 end
 
 local function PlainString(value)
-	if type(value) ~= "string" or value == "" or IsSecret(value) then
+	if type(value) ~= "string" or IsSecret(value) or value == "" then
 		return nil
 	end
 	return value
@@ -141,7 +142,7 @@ local function BackpackID()
 end
 
 local function IsGearBag(bagID)
-	if bagID == BackpackID() then
+	if bagID == BackpackID() or bagID == BagID("ReagentBag") then
 		return true
 	end
 	local first = BackpackID() + 1

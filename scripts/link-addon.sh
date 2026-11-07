@@ -2,7 +2,7 @@
 set -euo pipefail
 
 WOW_ROOT="${WOW_ROOT:-/Applications/World of Warcraft}"
-DEFAULT_CLIENT="_classic_beta_"
+DEFAULT_CLIENT="_forever_"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 usage() {

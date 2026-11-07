@@ -25,7 +25,7 @@ function ns.IsSecret(value)
 end
 
 function ns.PlainString(value)
-	if type(value) ~= "string" or value == "" or ns.IsSecret(value) then
+	if type(value) ~= "string" or ns.IsSecret(value) or value == "" then
 		return nil
 	end
 	return value

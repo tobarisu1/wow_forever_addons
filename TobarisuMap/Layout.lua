@@ -247,6 +247,48 @@ function ns.PlaceTracking()
 	trackingPlacing = false
 end
 
+local queuePlacing = false
+local queueHooked = false
+local QUEUE_SCALE = 0.7
+
+local function HookQueueStatus(button)
+	if queueHooked then
+		return
+	end
+	queueHooked = true
+	local function Replace()
+		if queuePlacing or not ns.IsEnabled() then
+			return
+		end
+		ns.PlaceQueueStatus()
+	end
+	if button.UpdatePosition then
+		hooksecurefunc(button, "UpdatePosition", Replace)
+	end
+	hooksecurefunc(button, "SetScale", Replace)
+	hooksecurefunc(button, "SetParent", Replace)
+end
+
+function ns.PlaceQueueStatus()
+	-- LFG eye: Mainline parks it on the micro menu. Dock it to the bottom-right corner
+	-- of the square map. Blizzard still shows it only while queued.
+	local button = _G.QueueStatusButton
+	local anchor = Minimap or ns.GetCluster()
+	if not button or not anchor or queuePlacing then
+		return
+	end
+	queuePlacing = true
+	button.__tmapKeepShown = true
+	HookQueueStatus(button)
+	button:SetParent(UIParent)
+	button:SetScale(QUEUE_SCALE)
+	button:ClearAllPoints()
+	button:SetPoint("CENTER", anchor, "BOTTOMRIGHT", 0, 0)
+	button:SetFrameStrata("HIGH")
+	button:SetFrameLevel(64)
+	queuePlacing = false
+end
+
 local function TexturePathLooksLikeDayNight(value)
 	if not value then
 		return false
@@ -755,6 +797,7 @@ function ns.ApplySize(keepWidgets)
 		if ns.PlaceTracking then
 			ns.PlaceTracking()
 		end
+		ns.PlaceQueueStatus()
 	end
 
 	applyingLayout = false
@@ -885,6 +928,7 @@ function ns.InitLayout()
 	ns.ApplySquareMask()
 	ns.PlaceCalendar()
 	ns.PlaceTracking()
+	ns.PlaceQueueStatus()
 	ns.HideDayNightCenter()
 
 	cluster:SetMovable(true)

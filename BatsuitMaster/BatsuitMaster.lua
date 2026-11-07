@@ -31,7 +31,7 @@ function ns.PlainNumber(value)
 end
 
 function ns.PlainString(value)
-	if type(value) ~= "string" or value == "" or ns.IsSecret(value) then
+	if type(value) ~= "string" or ns.IsSecret(value) or value == "" then
 		return nil
 	end
 	return value
@@ -67,6 +67,11 @@ local function StatusText()
 	local ready = "waiting on bags"
 	if ns.CanSuitUp and ns.CanSuitUp() then
 		ready = "ready"
+	elseif ns.SuitBlockReason then
+		local why = ns.SuitBlockReason()
+		if why then
+			ready = why
+		end
 	end
 	local scale = 100
 	if ns.GetScale then

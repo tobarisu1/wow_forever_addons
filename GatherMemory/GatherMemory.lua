@@ -407,8 +407,9 @@ local function FlattenNestedNodes()
 end
 
 local function LoadCache()
-	RebuildFromRecords()
+	-- Packed keeps the full node name; records only keep a catalog id.
 	RebuildFromPacked()
+	RebuildFromRecords()
 	FlattenNestedNodes()
 	if #cache > 0 then
 		FlushPacked()
@@ -491,14 +492,50 @@ function ns.SpellName(spellID)
 	return nil
 end
 
+local requestedItems = {}
+local pendingItems = {}
+local itemLoader
+
+local function RefreshWhenItemLoads(itemID)
+	if requestedItems[itemID] or not C_Item or not C_Item.RequestLoadItemDataByID then
+		return
+	end
+	requestedItems[itemID] = true
+	pendingItems[itemID] = true
+	if not itemLoader then
+		itemLoader = CreateFrame("Frame")
+		itemLoader:SetScript("OnEvent", function(_, _, loadedID)
+			loadedID = PublicNumber(loadedID)
+			if not loadedID or not pendingItems[loadedID] then
+				return
+			end
+			pendingItems[loadedID] = nil
+			if not next(pendingItems) then
+				itemLoader:UnregisterEvent("ITEM_DATA_LOAD_RESULT")
+			end
+			ns.RefreshAll()
+		end)
+	end
+	itemLoader:RegisterEvent("ITEM_DATA_LOAD_RESULT")
+	C_Item.RequestLoadItemDataByID(itemID)
+end
+
+-- GetItemIconByID is nil until the item is in the client cache.
 function ns.ItemIcon(itemID)
+	local icon
 	if C_Item and C_Item.GetItemIconByID then
-		return C_Item.GetItemIconByID(itemID)
+		icon = C_Item.GetItemIconByID(itemID)
 	end
-	if GetItemIcon then
-		return GetItemIcon(itemID)
+	if not icon and C_Item and C_Item.GetItemInfoInstant then
+		icon = select(5, C_Item.GetItemInfoInstant(itemID))
 	end
-	return nil
+	if not icon and GetItemIcon then
+		icon = GetItemIcon(itemID)
+	end
+	if not icon then
+		RefreshWhenItemLoads(itemID)
+	end
+	return icon
 end
 
 local function Vector2(x, y)

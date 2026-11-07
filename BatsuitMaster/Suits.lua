@@ -40,7 +40,6 @@ end
 
 local equipAfterCombat = false
 local equipping = false
-local skippedPieces = nil
 
 local function CharacterKey()
 	if type(BackendMaster) == "table" and type(BackendMaster.GetCurrentCharacter) == "function" then
@@ -488,6 +487,23 @@ function ns.MissingPieces()
 	return list
 end
 
+function ns.SuitBlockReason()
+	local pieces = ns.MissingPieces()
+	if #pieces == 0 then
+		return nil
+	end
+	local lines = {}
+	for i = 1, #pieces do
+		local piece = pieces[i]
+		if piece.where == "bank" then
+			lines[#lines + 1] = piece.name .. " is in the bank."
+		else
+			lines[#lines + 1] = piece.name .. " is not in your bags."
+		end
+	end
+	return table.concat(lines, " ")
+end
+
 function ns.SetSlot(key, itemID, fromCursor)
 	local row = Row()
 	itemID = ns.PlainNumber(itemID)
@@ -664,134 +680,55 @@ local function CarriedBagIDs()
 	return bags
 end
 
-local function BagSlotCount(bagID)
-	if not C_Container or not C_Container.GetContainerNumSlots then
-		return 0
-	end
-	local ok, count = pcall(C_Container.GetContainerNumSlots, bagID)
-	count = ok and ns.PlainNumber(count) or 0
-	if count < 1 then
-		return 0
-	end
-	if count > 98 then
-		return 98
-	end
-	return count
-end
-
--- A normal bag reports family 0. Quivers and profession bags do not take gear.
-local function BagHoldsGear(bagID)
+function ns.FreeBagSlots()
 	if not C_Container or not C_Container.GetContainerNumFreeSlots then
-		return true
+		return 0
 	end
-	local results = { pcall(C_Container.GetContainerNumFreeSlots, bagID) }
-	if not results[1] then
-		return true
+	local free = 0
+	local bags = CarriedBagIDs()
+	for i = 1, #bags do
+		local results = { pcall(C_Container.GetContainerNumFreeSlots, bags[i]) }
+		local count = results[1] and ns.PlainNumber(results[2])
+		local family = ns.PlainNumber(results[3])
+		if count and count > 0 and (family == nil or family == 0) then
+			free = free + count
+		end
 	end
-	local family = ns.PlainNumber(results[3])
-	if family == nil then
-		return true
-	end
-	return family == 0
-end
-
-local function SlotIsEmpty(bagID, slot)
-	if not C_Container or not C_Container.GetContainerItemInfo then
-		return false
-	end
-	local ok, info = pcall(C_Container.GetContainerItemInfo, bagID, slot)
-	if not ok or ns.IsSecret(info) then
-		return false
-	end
-	if info == nil then
-		return true
-	end
-	if type(info) ~= "table" or ns.IsSecret(info.itemID) then
-		return false
-	end
-	local itemID = ns.PlainNumber(info.itemID)
-	return not itemID or itemID == 0
+	return free
 end
 
 local function FirstOpenSlot()
+	if not C_Container or not C_Container.GetContainerFreeSlots then
+		return nil
+	end
 	local bags = CarriedBagIDs()
 	for i = 1, #bags do
-		local bagID = bags[i]
-		if BagHoldsGear(bagID) then
-			local count = BagSlotCount(bagID)
-			for slot = 1, count do
-				if SlotIsEmpty(bagID, slot) then
-					return bagID, slot
-				end
+		local results = { pcall(C_Container.GetContainerNumFreeSlots, bags[i]) }
+		local family = ns.PlainNumber(results[3])
+		if family ~= nil and family ~= 0 then
+			-- profession bags and quivers do not take gear
+		else
+			local ok, slots = pcall(C_Container.GetContainerFreeSlots, bags[i])
+			local slot = ok and type(slots) == "table" and ns.PlainNumber(slots[1])
+			if slot then
+				return bags[i], slot
 			end
 		end
 	end
 	return nil
 end
 
-function ns.FreeBagSlots()
-	local free = 0
-	local bags = CarriedBagIDs()
-	for i = 1, #bags do
-		local bagID = bags[i]
-		if BagHoldsGear(bagID) then
-			local count = BagSlotCount(bagID)
-			for slot = 1, count do
-				if SlotIsEmpty(bagID, slot) then
-					free = free + 1
-				end
-			end
-		end
-	end
-	return free
+local function CursorBusy()
+	return CursorHasItem and CursorHasItem()
 end
-
-local function BindTypeOf(itemID)
-	if not C_Item or not C_Item.GetItemInfo then
-		return nil
-	end
-	local results = { pcall(C_Item.GetItemInfo, itemID) }
-	if not results[1] then
-		return nil
-	end
-	local info = results[2]
-	if type(info) == "table" then
-		return ns.PlainNumber(info.bindType or info.itemBindType)
-	end
-	return ns.PlainNumber(results[15])
-end
-
-local function BindsWhenEquipped(itemID)
-	local bindType = BindTypeOf(itemID)
-	if bindType == nil then
-		return false
-	end
-	local onEquip = Enum and Enum.ItemBind and Enum.ItemBind.OnEquip
-	if onEquip ~= nil then
-		return bindType == onEquip
-	end
-	return bindType == 2
-end
-
-local function SlotIsBound(bag, slot)
-	if not C_Container or not C_Container.GetContainerItemInfo then
-		return nil
-	end
-	local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
-	if not ok or type(info) ~= "table" or info.isBound == nil or ns.IsSecret(info.isBound) then
-		return nil
-	end
-	return info.isBound and true or false
-end
-
-local BIND_POPUPS = { "EQUIP_BIND", "EQUIP_BIND_TRADEABLE", "EQUIP_BIND_REFUNDABLE" }
 
 local function BindPopupOpen()
 	if not StaticPopup_Visible then
 		return false
 	end
-	for i = 1, #BIND_POPUPS do
-		local ok, shown = pcall(StaticPopup_Visible, BIND_POPUPS[i])
+	local names = { "EQUIP_BIND", "EQUIP_BIND_TRADEABLE", "EQUIP_BIND_REFUNDABLE" }
+	for i = 1, #names do
+		local ok, shown = pcall(StaticPopup_Visible, names[i])
 		if ok and shown then
 			return true
 		end
@@ -799,45 +736,24 @@ local function BindPopupOpen()
 	return false
 end
 
-local function DismissBindPopup()
-	if not StaticPopup_Hide then
-		return
+local function PutCursorAway(bag, slot)
+	if not CursorBusy() or not C_Container or not C_Container.PickupContainerItem then
+		return not CursorBusy()
 	end
-	for i = 1, #BIND_POPUPS do
-		if not StaticPopup_Visible or not BindPopupOpen() then
-			break
+	if bag ~= nil and slot ~= nil then
+		pcall(C_Container.PickupContainerItem, bag, slot)
+	end
+	if CursorBusy() then
+		local openBag, openSlot = FirstOpenSlot()
+		if openBag then
+			pcall(C_Container.PickupContainerItem, openBag, openSlot)
 		end
-		pcall(StaticPopup_Hide, BIND_POPUPS[i])
 	end
-end
-
-local function CursorBusy()
-	return CursorHasItem and CursorHasItem()
-end
-
--- One bag action per call. A second drop in the same breath is ignored, so a
--- full backpack was eating the attempt and the other bags were never used.
-local function StowCursor(bag, slot)
-	if not CursorBusy() then
-		return true
-	end
-	if not C_Container or not C_Container.PickupContainerItem then
-		return false
-	end
-	local intoBag, intoSlot = bag, slot
-	if intoBag == nil or intoSlot == nil or not SlotIsEmpty(intoBag, intoSlot) then
-		intoBag, intoSlot = FirstOpenSlot()
-	end
-	if intoBag == nil then
-		return false
-	end
-	pcall(C_Container.PickupContainerItem, intoBag, intoSlot)
 	return not CursorBusy()
 end
 
 -- Wear exactly the loadout. Pieces already in the right slot stay there.
--- Everything else comes off into the bags. Swapping a bag item into a filled
--- slot does not need a spare slot. Emptying a slot does.
+-- Everything else comes off into the bags.
 function ns.BuildSuitPlan()
 	if not ns.CanSuitUp() then
 		return nil, "missing"
@@ -860,9 +776,6 @@ function ns.BuildSuitPlan()
 		elseif desired then
 			local loc = ConfirmedBag(desired, used)
 			if loc then
-				if SlotIsBound(loc.bag, loc.slot) == false and BindsWhenEquipped(desired) then
-					return nil, "boe", desired
-				end
 				equips[#equips + 1] = {
 					kind = "equip",
 					key = key,
@@ -889,250 +802,101 @@ function ns.BuildSuitPlan()
 	if needSpace > ns.FreeBagSlots() then
 		return nil, "full"
 	end
-	local plan = {}
-	for i = 1, #equips do
-		plan[#plan + 1] = equips[i]
-	end
+	local plan = equips
 	for i = 1, #clears do
 		plan[#plan + 1] = clears[i]
 	end
 	return plan
 end
 
-local function SuitFailed(reason, itemID)
+local SWAP_WAIT = 0.5
+
+local function StopSuit(message)
 	equipping = false
-	if reason == "full" then
-		ns.Print("Your bags are full. Suit Up cannot take off the extra pieces.")
-	elseif reason == "combat" then
-		ns.Print("Combat interrupted Suit Up.")
-	elseif reason == "boe" then
-		local name = itemID and ns.ItemName(itemID) or "One of these pieces"
-		ns.Print(name .. " is bind on equip and has not been worn yet. Equip it and bind it first.")
-	elseif reason == "slot" then
-		local name = itemID and ns.ItemName(itemID) or "One piece"
-		ns.Print(name .. " does not go in that slot.")
-	else
-		ns.Print("A piece left your bags. Suit Up stopped.")
-	end
+	ns.Print(message)
 	if ns.RefreshWindow then
 		ns.RefreshWindow()
 	end
 end
 
-local function StillEquipping()
+-- One manual swap, split so each click lands before the next.
+-- 1 pick up, 2 put it on, 3 drop whatever came off.
+local function RunSuit(plan, index, phase)
 	if not equipping then
-		return false
+		return
 	end
 	if InCombatLockdown and InCombatLockdown() then
-		equipAfterCombat = false
-		SuitFailed("combat")
-		return false
-	end
-	return true
-end
-
--- Pickup and equip land on a later frame. Checking the cursor in the same
--- call sees an empty hand and treats a bag piece as missing.
-local function WaitFor(check, onDone, tries)
-	tries = tries or 8
-	C_Timer.After(0.05, function()
-		if not StillEquipping() then
-			return
-		end
-		local result = check()
-		if result ~= nil then
-			onDone(result)
-		elseif tries <= 1 then
-			onDone(false)
-		else
-			WaitFor(check, onDone, tries - 1)
-		end
-	end)
-end
-
-local function CursorFitsSlot(inv)
-	if not C_PaperDollInfo or not C_PaperDollInfo.CanCursorCanGoInSlot then
-		return true
-	end
-	local ok, can = pcall(C_PaperDollInfo.CanCursorCanGoInSlot, inv)
-	if not ok then
-		return true
-	end
-	return can and true or false
-end
-
--- Same call the character sheet uses. EquipCursorItem rejects real paper-doll
--- slots and shows "that doesn't go there" even when the piece belongs there.
-local function PlaceOnSlot(inv)
-	if not CursorFitsSlot(inv) then
-		return false
-	end
-	if PickupInventoryItem then
-		pcall(PickupInventoryItem, inv)
-		return true
-	end
-	return false
-end
-
-local function BeginEquip(step, onDone)
-	if ns.WornItem(step.key) == step.itemID then
-		onDone(true)
+		StopSuit("Combat interrupted Suit Up.")
 		return
 	end
-	if CursorBusy() or not C_Container or not C_Container.PickupContainerItem then
-		onDone(false, "missing")
-		return
-	end
-	if SlotIsBound(step.bag, step.slot) == false and BindsWhenEquipped(step.itemID) then
-		onDone(false, "boe")
-		return
-	end
-	pcall(C_Container.PickupContainerItem, step.bag, step.slot)
-	WaitFor(function()
-		if ns.WornItem(step.key) == step.itemID and not CursorBusy() then
-			return true
-		end
-		if CursorBusy() then
-			return "cursor"
-		end
-		return nil
-	end, function(state)
-		if state == true then
-			onDone(true)
-			return
-		end
-		if state ~= "cursor" then
-			onDone(false, "missing")
-			return
-		end
-		if not PlaceOnSlot(step.inv) then
-			StowCursor(step.bag, step.slot)
-			onDone(false, "slot")
-			return
-		end
-		WaitFor(function()
-			if BindPopupOpen() then
-				return false
-			end
-			if ns.WornItem(step.key) ~= step.itemID then
-				return nil
-			end
-			if not CursorBusy() or StowCursor(step.bag, step.slot) then
-				return true
-			end
-			return nil
-		end, function(ok)
-			if BindPopupOpen() then
-				DismissBindPopup()
-				StowCursor(step.bag, step.slot)
-				onDone(false, "boe")
-				return
-			end
-			if ok then
-				onDone(true)
-				return
-			end
-			if ns.WornItem(step.key) == step.itemID then
-				StowCursor(step.bag, step.slot)
-				onDone(not CursorBusy(), "full")
-				return
-			end
-			StowCursor(step.bag, step.slot)
-			onDone(false, "missing")
-		end, 20)
-	end, 8)
-end
-
-local function BeginClear(step, onDone)
-	if not ns.WornItem(step.key) and not CursorBusy() then
-		onDone(true)
-		return
-	end
-	if CursorBusy() and not StowCursor() and not FirstOpenSlot() then
-		onDone(false, "full")
-		return
-	end
-	if not CursorBusy() and PickupInventoryItem then
-		pcall(PickupInventoryItem, step.inv)
-	end
-	local held = false
-	WaitFor(function()
-		if CursorBusy() then
-			held = true
-			if StowCursor() then
-				return true
-			end
-			if not FirstOpenSlot() then
-				return false
-			end
-			return nil
-		end
-		-- The piece is in a bag once the cursor is clear. The paper doll
-		-- can still show it for a moment; that is not a full inventory.
-		if held or not ns.WornItem(step.key) then
-			return true
-		end
-		return nil
-	end, function(ok)
-		if ok or (held and not CursorBusy()) or (not ns.WornItem(step.key) and not CursorBusy()) then
-			onDone(true)
-			return
-		end
-		if CursorBusy() and ns.WornItem(step.key) and PickupInventoryItem then
-			pcall(PickupInventoryItem, step.inv)
-		end
-		onDone(false, "full")
-	end, 40)
-end
-
-local function SuitNext(plan, index)
-	if not StillEquipping() then
+	if BindPopupOpen() then
+		StopSuit("A piece is bind on equip and has not been worn yet. Equip it and bind it first.")
 		return
 	end
 	local step = plan[index]
 	if not step then
 		equipping = false
-		if skippedPieces and #skippedPieces > 0 then
-			local names = {}
-			for i = 1, #skippedPieces do
-				names[i] = ns.ItemName(skippedPieces[i])
-			end
-			ns.Print("Could not equip " .. table.concat(names, ", ") .. ". Everything else was updated.")
-		else
-			ns.Print("Suited up in " .. ns.SuitName() .. ".")
-		end
-		skippedPieces = nil
+		ns.Print("Suited up in " .. ns.SuitName() .. ".")
 		if ns.RefreshWindow then
 			ns.RefreshWindow()
 		end
 		return
 	end
-	local function advance(ok, reason)
-		if not ok then
-			if reason == "boe" or reason == "combat" then
-				SuitFailed(reason, step.itemID)
-				return
-			end
-			if step.kind == "clear" or reason == "full" then
-				SuitFailed(reason or "full", step.itemID)
-				return
-			end
-			skippedPieces = skippedPieces or {}
-			if step.itemID then
-				skippedPieces[#skippedPieces + 1] = step.itemID
-			end
-		end
-		SuitNext(plan, index + 1)
+	local function nextPhase(nextIndex, nextPhase)
+		C_Timer.After(SWAP_WAIT, function()
+			RunSuit(plan, nextIndex, nextPhase)
+		end)
 	end
 	if step.kind == "clear" then
-		BeginClear(step, advance)
-	else
-		BeginEquip(step, advance)
+		if not ns.WornItem(step.key) then
+			nextPhase(index + 1, 1)
+			return
+		end
+		if phase == 1 then
+			if PickupInventoryItem then
+				pcall(PickupInventoryItem, step.inv)
+			end
+			nextPhase(index, 2)
+			return
+		end
+		if not PutCursorAway() then
+			if PickupInventoryItem then
+				pcall(PickupInventoryItem, step.inv)
+			end
+			StopSuit("Your bags are full. Suit Up cannot take off the extra pieces.")
+			return
+		end
+		nextPhase(index + 1, 1)
+		return
 	end
+	if ns.WornItem(step.key) == step.itemID and not CursorBusy() then
+		nextPhase(index + 1, 1)
+		return
+	end
+	if phase == 1 then
+		if C_Container and C_Container.PickupContainerItem then
+			pcall(C_Container.PickupContainerItem, step.bag, step.slot)
+		end
+		nextPhase(index, 2)
+		return
+	end
+	if phase == 2 then
+		if PickupInventoryItem then
+			pcall(PickupInventoryItem, step.inv)
+		end
+		nextPhase(index, 3)
+		return
+	end
+	if not PutCursorAway(step.bag, step.slot) then
+		StopSuit("Your bags are full. Suit Up cannot take off the extra pieces.")
+		return
+	end
+	nextPhase(index + 1, 1)
 end
 
 function ns.SuitUp()
 	if not ns.CanSuitUp() then
+		ns.Print(ns.SuitBlockReason() or "Every piece has to be in your bags.")
 		if ns.RefreshWindow then
 			ns.RefreshWindow()
 		end
@@ -1144,10 +908,16 @@ function ns.SuitUp()
 		return
 	end
 	equipAfterCombat = false
-	skippedPieces = nil
-	local plan, reason, itemID = ns.BuildSuitPlan()
+	local plan, reason = ns.BuildSuitPlan()
 	if not plan then
-		SuitFailed(reason, itemID)
+		if reason == "full" then
+			ns.Print("Your bags are full. Suit Up cannot take off the extra pieces.")
+		else
+			ns.Print(ns.SuitBlockReason() or "Every piece has to be in your bags.")
+		end
+		if ns.RefreshWindow then
+			ns.RefreshWindow()
+		end
 		return
 	end
 	if #plan == 0 then
@@ -1155,7 +925,7 @@ function ns.SuitUp()
 		return
 	end
 	equipping = true
-	SuitNext(plan, 1)
+	RunSuit(plan, 1, 1)
 end
 
 function ns.OnLeavingCombat()
@@ -1164,7 +934,7 @@ function ns.OnLeavingCombat()
 	end
 	equipAfterCombat = false
 	if not ns.CanSuitUp() then
-		ns.Print("A piece left your bags. Suit Up is off until the loadout is complete.")
+		ns.Print(ns.SuitBlockReason() or "A piece left your bags. Suit Up is off until the loadout is complete.")
 		if ns.RefreshWindow then
 			ns.RefreshWindow()
 		end

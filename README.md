@@ -37,28 +37,28 @@ Add a new addon by creating `YourAddon/YourAddon.toc` at the repo root and listi
 
 ## Install on Mac
 
-Default WoW root is `/Applications/World of Warcraft`. Forever beta lives in `_classic_beta_`.
+Default WoW root is `/Applications/World of Warcraft`. Forever lives in `_forever_`.
 
 ```bash
 ./scripts/link-addon.sh
 ```
 
-That creates `/Applications/World of Warcraft/_classic_beta_/Interface/AddOns` if needed and copies each addon folder at the repo root (`FolderName/FolderName.toc`) into it, including **BackendMaster** and **BagMaster**. **SplitChat** is parked and removed from AddOns if a previous copy is there. BagMaster needs BackendMaster enabled. The WoW folder name is case-sensitive: `AddOns`, not `Addons`.
+That creates `/Applications/World of Warcraft/_forever_/Interface/AddOns` if needed and copies each addon folder at the repo root (`FolderName/FolderName.toc`) into it, including **BackendMaster** and **BagMaster**. **SplitChat** is parked and removed from AddOns if a previous copy is there. BagMaster needs BackendMaster enabled. The WoW folder name is case-sensitive: `AddOns`, not `Addons`.
 
 The client gets its own copy, so **re-run the script after editing** and fully restart WoW when the change is a new file or TOC. Lua-only edits need `/reload`. SavedVariables persist across `/reload` and relog.
 
 Optional overrides:
 
 ```bash
-./scripts/link-addon.sh _classic_beta_
-./scripts/link-addon.sh "/Applications/World of Warcraft/_classic_beta_/Interface/AddOns"
+./scripts/link-addon.sh _forever_
+./scripts/link-addon.sh "/Applications/World of Warcraft/_forever_/Interface/AddOns"
 ```
 
 Enable each addon on the character-select screen.
 
 ## Install on Windows
 
-Default WoW root is `C:\Program Files (x86)\World of Warcraft`, then `C:\Program Files\World of Warcraft`. Forever beta lives in `_classic_beta_`.
+Default WoW root is `C:\Program Files (x86)\World of Warcraft`, then `C:\Program Files\World of Warcraft`. Forever lives in `_forever_`.
 
 From Command Prompt or PowerShell, in this repo:
 
@@ -66,7 +66,7 @@ From Command Prompt or PowerShell, in this repo:
 scripts\link-addon.bat
 ```
 
-You can also double-click `scripts\link-addon.bat`. That creates `_classic_beta_\Interface\AddOns` if needed and copies each addon folder (`FolderName\FolderName.toc`) into it with `robocopy /MIR`, including **BackendMaster** and **BagMaster**. **SplitChat** is parked and removed from AddOns if a previous copy is there. BagMaster needs BackendMaster enabled. The WoW folder name is case-sensitive: `AddOns`, not `Addons`.
+You can also double-click `scripts\link-addon.bat`. That creates `_forever_\Interface\AddOns` if needed and copies each addon folder (`FolderName\FolderName.toc`) into it with `robocopy /MIR`, including **BackendMaster** and **BagMaster**. **SplitChat** is parked and removed from AddOns if a previous copy is there. BagMaster needs BackendMaster enabled. The WoW folder name is case-sensitive: `AddOns`, not `Addons`.
 
 As on Mac, the client gets its own copy, so re-run it after editing and fully restart WoW.
 
@@ -80,9 +80,9 @@ scripts\link-addon.bat
 Or pass a client folder / AddOns path:
 
 ```bat
-scripts\link-addon.bat _classic_beta_
-scripts\link-addon.bat "D:\Games\World of Warcraft\_classic_beta_"
-scripts\link-addon.bat "D:\Games\World of Warcraft\_classic_beta_\Interface\AddOns"
+scripts\link-addon.bat _forever_
+scripts\link-addon.bat "D:\Games\World of Warcraft\_forever_"
+scripts\link-addon.bat "D:\Games\World of Warcraft\_forever_\Interface\AddOns"
 ```
 
 If linking fails, run Command Prompt as Administrator, or turn on **Settings > System > For developers > Developer Mode**.

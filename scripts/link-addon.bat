@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
-set "DEFAULT_CLIENT=_classic_beta_"
+set "DEFAULT_CLIENT=_forever_"
 set "SCRIPT_DIR=%~dp0"
 pushd "%SCRIPT_DIR%.."
 set "REPO_ROOT=%CD%"

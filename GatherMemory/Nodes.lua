@@ -5,11 +5,12 @@ local KIND_ORE = "ore"
 local KIND_CHEST = "chest"
 local KIND_FISH = "fish"
 
+-- Profession icons, so a fallback never looks like a specific herb or ore.
 ns.DEFAULT_ICONS = {
-	[KIND_HERB] = "Interface\\Icons\\INV_Misc_Flower_02",
-	[KIND_ORE] = "Interface\\Icons\\INV_Ore_Copper_01",
+	[KIND_HERB] = "Interface\\Icons\\Trade_Herbalism",
+	[KIND_ORE] = "Interface\\Icons\\Trade_Mining",
 	[KIND_CHEST] = "Interface\\Icons\\INV_Box_01",
-	[KIND_FISH] = "Interface\\Icons\\INV_Misc_Fish_02",
+	[KIND_FISH] = "Interface\\Icons\\Trade_Fishing",
 }
 
 -- Vanilla-era node names. itemID is the gathered item so pins use that icon.
@@ -124,12 +125,36 @@ for i = 1, #catalog do
 	byID[i] = entry
 end
 
+-- Forever names some nodes with a prefix ("Wilted Peacebloom", "Stunted Silverleaf"),
+-- so fall back to the longest catalog name inside the node name.
+local byVariant = {}
+
+local function FindVariant(lower)
+	local best
+	for i = 1, #catalog do
+		local entry = catalog[i]
+		local entryName = string.lower(entry.name)
+		if string.find(lower, entryName, 1, true) and (not best or #entryName > #best.name) then
+			best = entry
+		end
+	end
+	return best
+end
+
 function ns.GetNodeInfo(name)
 	name = ns.PublicText(name)
 	if not name then
 		return nil
 	end
-	return byName[string.lower(name)]
+	local lower = string.lower(name)
+	local info = byName[lower]
+	if info then
+		return info
+	end
+	if byVariant[lower] == nil then
+		byVariant[lower] = FindVariant(lower) or false
+	end
+	return byVariant[lower] or nil
 end
 
 function ns.GetIDForNode(name)
